@@ -10,11 +10,14 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_pickle(PROCESSED / 'eva_limpio.pkl')
 df['semestre'] = df.periodo.str.extract(r'([AB])$')[0].fillna('ANUAL')
-caribe = ['ATLANTICO','BOLIVAR','CESAR','CORDOBA','LA GUAJIRA','MAGDALENA','SUCRE','SAN ANDRES']
-df['region_caribe'] = df.departamento.isin(caribe)
+CARIBE_COD_DEP = [8, 13, 20, 23, 44, 47, 70, 88]
+df['region_caribe'] = df.cod_dep.isin(CARIBE_COD_DEP)
 df['rendimiento_kg_ha'] = (df.rend_calc*1000).round(1)
-out = df[['fuente','departamento','cod_mun','municipio','grupo','cultivo','desagregacion','anio','periodo','semestre','ciclo',
-          'area_sembrada','area_cosechada','produccion','rend_calc','rendimiento_kg_ha','region_caribe']].rename(columns={'rend_calc':'rendimiento_t_ha'})
+out = df[['fuente','cod_dep','departamento','cod_mun','municipio','grupo','cultivo','desagregacion','anio','periodo','semestre','ciclo',
+          'estado_fisico_produccion','area_sembrada','area_cosechada','produccion','rend_calc','rendimiento_kg_ha','region_caribe']].rename(columns={'rend_calc':'rendimiento_t_ha'})
+# Al leer este CSV usa dtype={'periodo': str, 'estado_fisico_produccion': str}
+# para evitar los DtypeWarning de periodo y de tipos mixtos.
+# Para análisis temporales, usa las columnas 'anio' y 'semestre'.
 out.to_csv(PROCESSED / 'eva_2007_2024_limpio.csv', index=False, encoding='utf-8-sig')
 
 g = df.groupby('cultivo').agg(filas=('anio','size'), municipios=('cod_mun','nunique'), anios=('anio','nunique'),
