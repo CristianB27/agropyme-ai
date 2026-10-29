@@ -25,13 +25,14 @@ g['municipios_bolivar'] = df[df.departamento=='BOLIVAR'].groupby('cultivo').cod_
 g = g.fillna(0).astype(int).sort_values('filas', ascending=False).reset_index()
 foco = g[g.cultivo.isin(['MAIZ','YUCA','NAME'])]
 
-bruto = pd.read_pickle(PROCESSED / 'eva_bruto.pkl')
-limpieza = pd.DataFrame({'paso':['Filas brutas (2006-2024, unidas)','Se descarta 2006 (no pertenece al rango)','Sin área cosechada (<=0 o vacía)',
-  'Área cosechada > sembrada + 10%','Rendimientos atípicos (3 x IQR en log, por cultivo)','Filas limpias finales'],
-  'filas':[len(bruto), int((bruto.anio<2007).sum()), 9020, 8683, 1130, len(df)]})
+# El registro de limpieza lo genera limpiar_contar.py; aquí solo se lee.
+ruta_log = PROCESSED / 'log_limpieza.csv'
+if not ruta_log.exists():
+    raise FileNotFoundError(f'No existe {ruta_log}. Corre antes ml/src/limpiar_contar.py')
+limpieza = pd.read_csv(ruta_log)
 
 with pd.ExcelWriter(REPORTS / 'conteo_cultivos_EVA.xlsx') as w:
     foco.to_excel(w,sheet_name='Cultivos foco',index=False)
     g.to_excel(w,sheet_name='Todos los cultivos',index=False)
     limpieza.to_excel(w,sheet_name='Limpieza',index=False)
-print(foco.to_string()); print(limpieza.to_string()); print(len(out))
+print(foco.to_string()); print(limpieza.to_string(index=False)); print(len(out))
