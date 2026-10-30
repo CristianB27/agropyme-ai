@@ -26,3 +26,4 @@ data/
 .venv/
 __pycache__/
 ml/models/*.pkl
+req.json
