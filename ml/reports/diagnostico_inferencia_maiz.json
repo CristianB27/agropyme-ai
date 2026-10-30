@@ -1,0 +1,53 @@
+{
+  "cultivo": "MAIZ",
+  "modelo": "RandomForest",
+  "configuracion": "RandomForest|max_depth=None|min_samples_leaf=1|n_estimators=200",
+  "parametros": {
+    "max_depth": null,
+    "min_samples_leaf": 1,
+    "n_estimators": 200
+  },
+  "prueba": {
+    "anio_inicial": 2019,
+    "anio_final": 2024,
+    "filas": 11154,
+    "municipios": 1036
+  },
+  "rango_congelado": {
+    "q10_residual_t_ha": -0.5930898263200731,
+    "q90_residual_t_ha": 0.7246478891850647,
+    "cobertura_objetivo": 0.8,
+    "recalibrado_con_prueba": false
+  },
+  "cobertura_observada_pct": {
+    "total": 60.50744127667205,
+    "por_anio": {
+      "2019": 63.748810656517605,
+      "2020": 57.7276908923643,
+      "2021": 60.13793103448276,
+      "2022": 61.118012422360245,
+      "2023": 60.27044430135222,
+      "2024": 60.129870129870135
+    }
+  },
+  "importancia_permutacion": {
+    "metrica": "aumento medio del MAE al permutar la variable",
+    "repeticiones": 30,
+    "semilla": 20261103,
+    "variables_disponibles": 8,
+    "top_10_solicitado": true
+  },
+  "bootstrap": {
+    "metodo": "percentil 95 %, cluster por municipio con reemplazo",
+    "resampleos": 5000,
+    "semilla": 20261104,
+    "direccion_diferencia": "MAE_linea_base_menos_MAE_RandomForest",
+    "diferencia_mae_t_ha": 0.00934185480511407,
+    "ic_inferior_95_t_ha": -0.010022471168464744,
+    "ic_superior_95_t_ha": 0.027902740123594488,
+    "mejora_distinguible_del_azar_95": false
+  },
+  "modelo_modificado": false,
+  "rango_modificado": false,
+  "prueba_usada_para_ajustar": false
+}

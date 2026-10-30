@@ -178,6 +178,23 @@ Artefactos adicionales de Fase D:
 - `ml/reports/metadatos_inferencia_maiz.json`: protocolo, configuración, rango y conteos.
 - `ml/reports/resumen_fase_c.md`: resumen corto de Fases C y D, clima faltante, decisión y limitaciones.
 
+## Diagnóstico post hoc de MAÍZ
+
+`ml/src/diagnostico_inferencia_maiz.py` diagnostica el Random Forest congelado sin cambiarlo, recalibrar el rango ni usar la prueba para ajustar el modelo. Calcula cobertura del rango q10-q90 total y anual, MAE/RMSE anual de RF y línea base en Bolívar, importancia de variables por permutación y un bootstrap clusterizado por municipios de la diferencia de MAE.
+
+```powershell
+python ml/src/diagnostico_inferencia_maiz.py
+```
+
+Resultados en `ml/reports/`:
+
+- `cobertura_rango_prueba_maiz.csv`: cobertura total y por año del rango congelado; `cobertura_rango_prueba_detalle_maiz.csv` conserva el resultado por fila.
+- `metricas_bolivar_anual_maiz.csv`: MAE y RMSE por año para Bolívar.
+- `importancia_permutacion_maiz.csv`: importancia media y desviación por variable; incluye el detalle de repeticiones en `importancia_permutacion_detalle_maiz.csv`.
+- `bootstrap_resumen_mae_maiz.csv`: diferencia de MAE e IC 95 %; las 5.000 réplicas quedan en `bootstrap_diferencia_mae_maiz.csv`.
+- `diagnostico_inferencia_maiz.json`: protocolo, semillas, resultados y marcas de que no hubo ajuste.
+- `resumen_diagnostico_inferencia_maiz.md`: resumen corto de los cuatro diagnósticos.
+
 ## Pruebas
 
 Las pruebas son de regresión sobre los artefactos de `data/processed/`. En un clon nuevo primero hay que ejecutar el pipeline completo y después las pruebas:
