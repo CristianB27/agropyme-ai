@@ -134,6 +134,50 @@ La ejecución escribe en `ml/reports/`:
 
 El diagnóstico por fuente, la importancia de variables y la orquestación end-to-end quedan fuera de esta ejecución y se harán solo si se solicitan.
 
+## Inferencia de MAÍZ (Fase D)
+
+`ml/src/inferencia_maiz.py` selecciona el modelo final exclusivamente con los cinco folds expansivos 2014-2018 y prepara una tabla de rendimiento esperado para el frontend. La prueba 2019-2024, ya evaluada en Fase C, **no se recalcula ni se usa para rankear modelos**; solo se consulta para el veto global acordado: si ningún modelo supera el MAE de la línea base en prueba, la línea base queda para inferencia.
+
+La comparación de candidatos en folds es:
+
+| Modelo | MAE medio (t/ha) | RMSE medio (t/ha) | MAPE medio (%) |
+|---|---:|---:|---:|
+| Línea base | 0.475 | 0.756 | 26.82 |
+| Random Forest | **0.395** | 0.647 | **23.38** |
+| HistGradientBoosting | 0.401 | **0.625** | 24.47 |
+| Ridge | 0.440 | 0.652 | 27.06 |
+
+Por el criterio congelado (MAE medio primero), **Random Forest queda como modelo de inferencia**, aunque HGB obtuvo el menor MAE en la prueba. No se cambia el modelo por una métrica de prueba. En la prueba, RF mejoró MAE y RMSE de la línea base, pero empeoró MAPE; HGB mejoró las tres métricas. Estos hechos se reportan sin maquillar el resultado.
+
+La tabla `ml/reports/rendimiento_esperado_maiz.csv` contiene 2,831 combinaciones reales municipio-sistema-semestre para 1,065 municipios, con:
+
+- `rendimiento_esperado_t_ha`: predicción del modelo final sobre el perfil mediano histórico del grupo;
+- `rango_inferior_t_ha` y `rango_superior_t_ha`: banda empírica central objetivo del 80 %, obtenida con residuales q10/q90 out-of-fold del modelo final;
+- `cod_dep`, `cod_mun` y `departamento`: claves para evitar ambigüedad de nombres homónimos.
+
+La función pública recibe `(municipio, semestre, sistema)` y devuelve esperado, rango y modelo:
+
+```python
+import sys
+sys.path.insert(0, 'ml/src')
+from inferencia_maiz import predecir_rendimiento_maiz
+
+resultado = predecir_rendimiento_maiz(
+    'CARTAGENA DE INDIAS',
+    'A',
+    'TRADICIONAL',
+)
+```
+
+Para municipios homónimos se debe agregar `cod_mun=...`. Si la combinación no tiene historia de entrenamiento, la función falla de forma explícita en vez de inventar un valor. La inferencia congela el perfil histórico mediano del grupo porque la entrada acordada no incluye año, rezago ni clima actual.
+
+Artefactos adicionales de Fase D:
+
+- `ml/reports/seleccion_modelo_final_maiz.csv`: comparación de folds y modelo de inferencia.
+- `ml/reports/validacion_folds_candidatos_finales_maiz.csv`: 20 métricas out-of-fold (cuatro métodos × cinco folds).
+- `ml/reports/metadatos_inferencia_maiz.json`: protocolo, configuración, rango y conteos.
+- `ml/reports/resumen_fase_c.md`: resumen corto de Fases C y D, clima faltante, decisión y limitaciones.
+
 ## Pruebas
 
 Las pruebas son de regresión sobre los artefactos de `data/processed/`. En un clon nuevo primero hay que ejecutar el pipeline completo y después las pruebas:

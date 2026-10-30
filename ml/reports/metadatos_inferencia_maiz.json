@@ -1,0 +1,40 @@
+{
+  "cultivo": "MAIZ",
+  "folds_validacion": [
+    2014,
+    2015,
+    2016,
+    2017,
+    2018
+  ],
+  "criterio_seleccion": "MAE medio de folds; desempates por RMSE medio, MAPE medio y desviación de MAE",
+  "modelo_seleccionado_por_folds": "RandomForest",
+  "configuracion_seleccionada_por_folds": "RandomForest|max_depth=None|min_samples_leaf=1|n_estimators=200",
+  "modelo_para_inferencia": "RandomForest",
+  "parametros_inferencia": {
+    "max_depth": null,
+    "min_samples_leaf": 1,
+    "n_estimators": 200
+  },
+  "veto_linea_base_aplicado": false,
+  "motivo_inferencia": "El candidato se mantiene por ser el mejor en MAE medio de folds; la prueba solo confirma que al menos un modelo supera el MAE de la línea base y no participa del ranking.",
+  "prueba_2019_2024": "evaluada una sola vez en Fase C; consultada en Fase D solo para el veto global acordado, nunca para rankear o reconfigurar modelos",
+  "mae_medio_folds_t_ha": 0.3953156145873886,
+  "mae_pooled_out_of_fold_t_ha": 0.3958589460778193,
+  "rango": {
+    "metodo": "residuales firmados q10-q90 out-of-fold",
+    "q10_t_ha": -0.5930898263200731,
+    "q90_t_ha": 0.7246478891850647,
+    "cobertura_objetivo": 0.8
+  },
+  "filas_tabla_inferencia": 2831,
+  "municipios_tabla_inferencia": 1065,
+  "filas_clima_faltante": 116,
+  "filas_clima_celda_incompleta": 112,
+  "municipios_clima_celda_incompleta": 5,
+  "filas_clima_sin_mgn_2023": 4,
+  "codigos_clima_sin_mgn_2023": 2,
+  "imputacion_clima_dentro_del_fold": true,
+  "perfil_inferencia": "medianas históricas del grupo municipio-sistema-semestre",
+  "ano_maximo_datos_inferencia": 2018
+}
