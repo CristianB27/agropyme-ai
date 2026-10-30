@@ -1,0 +1,10 @@
+﻿configuracion,modelo,parametros,mae_medio,rmse_medio,mape_medio,mae_desviacion,seleccionada
+HistGradientBoosting|l2_regularization=1.0|learning_rate=0.05|max_iter=250|max_leaf_nodes=15,HistGradientBoosting,"{""l2_regularization"": 1.0, ""learning_rate"": 0.05, ""max_iter"": 250, ""max_leaf_nodes"": 15}",0.4008947420405202,0.6246414555220833,24.467166536054133,0.04884843924445166,True
+HistGradientBoosting|l2_regularization=1.0|learning_rate=0.1|max_iter=250|max_leaf_nodes=15,HistGradientBoosting,"{""l2_regularization"": 1.0, ""learning_rate"": 0.1, ""max_iter"": 250, ""max_leaf_nodes"": 15}",0.4022037986379031,0.6267512200840007,24.47328144758174,0.049334448324674485,False
+HistGradientBoosting|l2_regularization=1.0|learning_rate=0.1|max_iter=250|max_leaf_nodes=31,HistGradientBoosting,"{""l2_regularization"": 1.0, ""learning_rate"": 0.1, ""max_iter"": 250, ""max_leaf_nodes"": 31}",0.4035859295312429,0.6327751077839447,24.232357099883423,0.048711197957284263,False
+RandomForest|max_depth=None|min_samples_leaf=1|n_estimators=200,RandomForest,"{""max_depth"": null, ""min_samples_leaf"": 1, ""n_estimators"": 200}",0.3953156145873886,0.6469871369340596,23.37944091877809,0.052305617091995674,True
+RandomForest|max_depth=20|min_samples_leaf=1|n_estimators=200,RandomForest,"{""max_depth"": 20, ""min_samples_leaf"": 1, ""n_estimators"": 200}",0.39688017005946596,0.6388682538461687,23.6752792525184,0.05111943966257092,False
+RandomForest|max_depth=20|min_samples_leaf=5|n_estimators=200,RandomForest,"{""max_depth"": 20, ""min_samples_leaf"": 5, ""n_estimators"": 200}",0.40308943323707175,0.6360698419980066,24.24618400495853,0.05025078770404903,False
+Ridge|alpha=100.0,Ridge,"{""alpha"": 100.0}",0.4396305008766241,0.6519838788684345,27.06029493619709,0.044420925891681735,True
+Ridge|alpha=10.0,Ridge,"{""alpha"": 10.0}",0.4414548896172665,0.6570824491684842,26.810702502662092,0.04651596115695618,False
+Ridge|alpha=1.0,Ridge,"{""alpha"": 1.0}",0.4491857784853148,0.6711694833070616,27.064982801528828,0.04732389016353935,False

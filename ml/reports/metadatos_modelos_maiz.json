@@ -1,0 +1,55 @@
+{
+  "cultivo": "MAIZ",
+  "folds_validacion": [
+    2014,
+    2015,
+    2016,
+    2017,
+    2018
+  ],
+  "protocolo": "folds expansivos: entrenamiento <= t-1 y validación en t; selección cerrada antes de abrir 2019--2024",
+  "criterio_seleccion": "MAE medio; desempates por RMSE medio, MAPE medio y desviación MAE",
+  "configuraciones_por_modelo": {
+    "Ridge": 3,
+    "RandomForest": 3,
+    "HistGradientBoosting": 3
+  },
+  "configuraciones_seleccionadas": {
+    "HistGradientBoosting": {
+      "configuracion": "HistGradientBoosting|l2_regularization=1.0|learning_rate=0.05|max_iter=250|max_leaf_nodes=15",
+      "parametros": {
+        "l2_regularization": 1.0,
+        "learning_rate": 0.05,
+        "max_iter": 250,
+        "max_leaf_nodes": 15
+      },
+      "mae_medio_validacion": 0.4008947420405202,
+      "rmse_medio_validacion": 0.6246414555220833,
+      "mape_medio_validacion": 24.467166536054133
+    },
+    "RandomForest": {
+      "configuracion": "RandomForest|max_depth=None|min_samples_leaf=1|n_estimators=200",
+      "parametros": {
+        "max_depth": null,
+        "min_samples_leaf": 1,
+        "n_estimators": 200
+      },
+      "mae_medio_validacion": 0.3953156145873886,
+      "rmse_medio_validacion": 0.6469871369340596,
+      "mape_medio_validacion": 23.37944091877809
+    },
+    "Ridge": {
+      "configuracion": "Ridge|alpha=100.0",
+      "parametros": {
+        "alpha": 100.0
+      },
+      "mae_medio_validacion": 0.4396305008766241,
+      "rmse_medio_validacion": 0.6519838788684345,
+      "mape_medio_validacion": 27.06029493619709
+    }
+  },
+  "filas_entrenamiento_final": 24859,
+  "filas_prueba_por_modelo": 11154,
+  "filas_clima_faltante": 116,
+  "imputacion_clima_dentro_del_fold": true
+}

@@ -103,6 +103,37 @@ Resultados del último corte reproducible:
 
 El corte temporal coincide con el cambio entre las bases EVA 2007-2018 y 2019-2024. Por ello, estas métricas miden el desempeño de la línea base sobre esa partición y no aíslan por sí solas el efecto de un posible cambio metodológico entre bases. Para comparar futuras fases, debe conservarse exactamente la misma definición de llaves, respaldo, conjuntos y cortes.
 
+## Modelos de MAÍZ (Fase C, alcance reducido)
+
+`ml/src/evaluar_modelos_maiz.py` compara la línea base con Ridge, Random Forest e HistGradientBoosting. El alcance de esta ejecución es deliberadamente reducido y reproducible:
+
+- **Features:** departamento, municipio, sistema, año, semestre, rezago de rendimiento del año anterior y las dos variables climáticas ERA5-Land. La imputación de faltantes se ajusta **dentro de cada fold**.
+- **Selección:** tres configuraciones por modelo. Los hiperparámetros se eligen con cinco folds expansivos: entrenamiento `<= t-1` y validación en `t`, para `t=2014, 2015, 2016, 2017, 2018`. El criterio es MAE medio; los empates se resuelven por RMSE medio, MAPE medio y desviación de MAE.
+- **Prueba final:** después de cerrar la selección, cada modelo se entrena con 2007-2018 y la prueba 2019-2024 se evalúa una sola vez. Línea base y modelos usan exactamente las mismas 11,154 filas.
+- **Clima incompleto:** se aceptan 5 celdas ERA5-Land sin semestres completos. Afectan 5 municipios y 112 filas de MAÍZ (79 de entrenamiento y 33 de prueba). Hay además 4 filas de 2 códigos sin geografía MGN 2023; en total, 116 filas quedan con clima faltante y se imputan dentro de cada fold. No se hizo refetch de esas celdas.
+
+### Resultado de la prueba final 2019-2024
+
+| Modelo | Filas | MAE (t/ha) | RMSE (t/ha) | MAPE (%) |
+|---|---:|---:|---:|---:|
+| Línea base | 11,154 | 0.887 | 1.544 | 38.85 |
+| HistGradientBoosting | 11,154 | 0.856 | 1.505 | 38.65 |
+| Random Forest | 11,154 | 0.877 | 1.533 | 39.09 |
+| Ridge | 11,154 | 0.945 | 1.550 | 46.77 |
+
+HistGradientBoosting mejora la línea base de forma leve: **-0.030 t/ha de MAE (-3.43%)**, **-0.040 t/ha de RMSE (-2.58%)** y **-0.20 puntos de MAPE**. Random Forest mejora MAE y RMSE, pero empeora el MAPE; Ridge no mejora la línea base.
+
+La ejecución escribe en `ml/reports/`:
+
+- `metricas_modelos_maiz.csv`: tabla total de la prueba final.
+- `resumen_modelos_maiz.md`: tabla legible.
+- `seleccion_hiperparametros_maiz.csv`: desempeño medio y configuración elegida por modelo.
+- `validacion_folds_modelos_maiz.csv`: las 45 métricas de los folds de selección.
+- `predicciones_modelos_maiz.csv`: predicciones por fila para los cuatro métodos.
+- `metadatos_modelos_maiz.json`: protocolo, configuraciones, conteos y marca de imputación in-fold.
+
+El diagnóstico por fuente, la importancia de variables y la orquestación end-to-end quedan fuera de esta ejecución y se harán solo si se solicitan.
+
 ## Pruebas
 
 Las pruebas son de regresión sobre los artefactos de `data/processed/`. En un clon nuevo primero hay que ejecutar el pipeline completo y después las pruebas:

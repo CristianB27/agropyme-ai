@@ -1,0 +1,5 @@
+﻿modelo,configuracion,filas,mae_t_ha,rmse_t_ha,mape_pct
+LineaBase,mediana_municipio_sistema,11154,0.8865845944339937,1.544366742688039,38.85217157128999
+HistGradientBoosting,HistGradientBoosting|l2_regularization=1.0|learning_rate=0.05|max_iter=250|max_leaf_nodes=15,11154,0.8561497030078395,1.5045393316751,38.64821220908912
+RandomForest,RandomForest|max_depth=None|min_samples_leaf=1|n_estimators=200,11154,0.8772427396288797,1.5329537508635334,39.09481155906163
+Ridge,Ridge|alpha=100.0,11154,0.9447430156927897,1.550455073708938,46.77047168540666
