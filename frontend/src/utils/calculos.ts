@@ -10,7 +10,7 @@ import type {
   ManoDeObra,
   Cosecha,
   Venta,
-} from '../types';
+} from '../types.ts';
 
 export interface CicloCalculo {
   costoInsumos: number;
@@ -22,10 +22,11 @@ export interface CicloCalculo {
   Q: number;
   Qv: number;
   Qnv: number;
-  costoPorUnidad: number | null;
+  costoUnitario: number | null;
+  costoDeLoVendido: number | null;
   rendimiento: number | null;
   ingresosRealizados: number;
-  utilidadRealizada: number | null;
+  margenRealizado: number | null;
   rentabilidadSobreCostos: number | null;
   margenSobreVentas: number | null;
   unidad: string;
@@ -92,13 +93,20 @@ export function calcularCiclo(data: AppData, ciclo: CicloProductivo): CicloCalcu
   const Qv = ventas.reduce((sum, v) => sum + v.cantidad_kg, 0);
   const Qnv = Q - Qv;
 
-  const costoPorUnidad = Q > 0 ? costoTotal / Q : null;
+  const costoUnitario = Q > 0 ? costoTotal / Q : null;
+  const costoDeLoVendido = costoUnitario !== null ? costoUnitario * Qv : null;
   const rendimiento = Q > 0 && areaHa > 0 ? Q / areaHa : null;
 
   const ingresosRealizados = ventas.reduce((sum, v) => sum + v.cantidad_kg * v.precio_unitario, 0);
-  const utilidadRealizada = ingresosRealizados - costoTotal;
-  const rentabilidadSobreCostos = costoTotal > 0 ? utilidadRealizada / costoTotal : null;
-  const margenSobreVentas = ingresosRealizados > 0 ? utilidadRealizada / ingresosRealizados : null;
+  const margenRealizado = costoDeLoVendido !== null
+    ? ingresosRealizados - costoDeLoVendido
+    : null;
+  const rentabilidadSobreCostos = costoDeLoVendido !== null && costoDeLoVendido > 0
+    ? margenRealizado !== null ? margenRealizado / costoDeLoVendido : null
+    : null;
+  const margenSobreVentas = ingresosRealizados > 0 && margenRealizado !== null
+    ? margenRealizado / ingresosRealizados
+    : null;
 
   return {
     costoInsumos,
@@ -110,15 +118,24 @@ export function calcularCiclo(data: AppData, ciclo: CicloProductivo): CicloCalcu
     Q,
     Qv,
     Qnv,
-    costoPorUnidad,
+    costoUnitario,
+    costoDeLoVendido,
     rendimiento,
     ingresosRealizados,
-    utilidadRealizada,
+    margenRealizado,
     rentabilidadSobreCostos,
     margenSobreVentas,
     unidad,
     esParcial: Qnv > 0,
   };
+}
+
+export function calcularResultadoProyectado(
+  calculo: Pick<CicloCalculo, 'ingresosRealizados' | 'Qnv' | 'costoTotal'>,
+  precioUnitarioEstimado: number,
+): number {
+  return calculo.ingresosRealizados +
+    calculo.Qnv * precioUnitarioEstimado - calculo.costoTotal;
 }
 
 export function cicloLabel(data: AppData, ciclo: CicloProductivo): string {

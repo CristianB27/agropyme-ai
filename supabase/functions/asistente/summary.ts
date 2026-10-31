@@ -5,6 +5,17 @@ import type {
   UserData,
 } from "./types.ts";
 
+export function calcularResultadoProyectado(
+  ciclo: Pick<
+    CycleSummary,
+    "ingresosRealizados" | "pendienteKg" | "costoTotal"
+  >,
+  precioUnitarioEstimado: number,
+): number {
+  return ciclo.ingresosRealizados +
+    ciclo.pendienteKg * precioUnitarioEstimado - ciclo.costoTotal;
+}
+
 export function buildDataSummary(
   data: UserData,
   clima: ClimateSnapshot[] = [],
@@ -65,7 +76,13 @@ export function buildDataSummary(
       (total, venta) => total + venta.cantidad_kg * venta.precio_unitario,
       0,
     );
-    const utilidadRealizada = ingresosRealizados - costoTotal;
+    const costoUnitario = produccionKg > 0 ? costoTotal / produccionKg : null;
+    const costoDeLoVendido = costoUnitario !== null
+      ? costoUnitario * vendidoKg
+      : null;
+    const margenRealizado = costoDeLoVendido !== null
+      ? ingresosRealizados - costoDeLoVendido
+      : null;
     const jornales = manoDeObra.reduce(
       (total, registro) => total + registro.num_jornales,
       0,
@@ -98,17 +115,19 @@ export function buildDataSummary(
       costoOtros,
       costoTotal,
       costoPorHectarea: areaHa > 0 ? costoTotal / areaHa : 0,
-      costoPorKg: produccionKg > 0 ? costoTotal / produccionKg : null,
+      costoUnitario,
       produccionKg,
       vendidoKg,
       pendienteKg,
       ingresosRealizados,
-      utilidadRealizada,
-      rentabilidadSobreCostos: costoTotal > 0
-        ? utilidadRealizada / costoTotal
+      costoDeLoVendido,
+      margenRealizado,
+      rentabilidadSobreCostos: costoDeLoVendido !== null &&
+          costoDeLoVendido > 0
+        ? margenRealizado !== null ? margenRealizado / costoDeLoVendido : null
         : null,
-      margenSobreVentas: ingresosRealizados > 0
-        ? utilidadRealizada / ingresosRealizados
+      margenSobreVentas: ingresosRealizados > 0 && margenRealizado !== null
+        ? margenRealizado / ingresosRealizados
         : null,
       jornales,
       esParcial: pendienteKg > 0,
@@ -133,11 +152,21 @@ export function buildDataSummary(
     (total, ciclo) => ({
       costos: total.costos + ciclo.costoTotal,
       ingresos: total.ingresos + ciclo.ingresosRealizados,
-      utilidad: total.utilidad + ciclo.utilidadRealizada,
+      costoDeLoVendido: total.costoDeLoVendido +
+        (ciclo.costoDeLoVendido ?? 0),
+      margenRealizado: total.margenRealizado +
+        (ciclo.margenRealizado ?? 0),
       produccionKg: total.produccionKg + ciclo.produccionKg,
       vendidoKg: total.vendidoKg + ciclo.vendidoKg,
     }),
-    { costos: 0, ingresos: 0, utilidad: 0, produccionKg: 0, vendidoKg: 0 },
+    {
+      costos: 0,
+      ingresos: 0,
+      costoDeLoVendido: 0,
+      margenRealizado: 0,
+      produccionKg: 0,
+      vendidoKg: 0,
+    },
   );
 
   return {

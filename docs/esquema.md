@@ -117,18 +117,26 @@ Las tablas privadas aplican RLS, por lo que cada consulta queda limitada a `auth
 
 ### Cálculo del resumen
 
-`summary.ts` consolida los registros por ciclo:
+`summary.ts` consolida los registros por ciclo con las mismas definiciones usadas por el frontend en `frontend/src/utils/calculos.ts`:
 
 - costo de insumos: `suma(cantidad × costo_unitario)`;
 - costo de jornales: `suma(num_jornales × valor_jornal)`;
 - otros costos: `suma(actividad.otros_costos)`;
-- producción, ventas y pendiente: quantities en `cantidad_kg`;
+- costo total `C`: `costo de insumos + costo de jornales + otros costos`;
+- producción `Q`, ventas `Qv` y pendiente `Qnv`: cantidades en `cantidad_kg`;
 - ingresos realizados: `suma(cantidad_kg × precio_unitario)`;
-- utilidad realizada: `ingresos realizados − costo total`;
-- rentabilidad sobre costos: `utilidad / costo total`;
-- margen sobre ventas: `utilidad / ingresos realizados`.
+- costo unitario: `C / Q`;
+- costo de lo vendido: `(C / Q) × Qv`;
+- margen realizado: `ingresos realizados − costo de lo vendido`;
+- margen sobre ventas: `margen realizado / ingresos realizados`;
+- rentabilidad sobre costos: `margen realizado / costo de lo vendido`;
+- resultado proyectado: `ingresos realizados + Qnv × precio estimado − costo total`. Este valor es siempre una **estimación** y no un resultado realizado.
 
-Si no hay producción, el costo por kg es `null`; si no hay costos o ingresos, el indicador porcentual correspondiente también es `null`.
+La rentabilidad usa el costo de lo vendido como denominador, no el costo total. Así, una cosecha parcialmente vendida no imputa a las ventas la totalidad de los costos de producción.
+
+El ciclo de regresión de maíz en Lote Norte valida el Paso 4: `C = $8.856.000`, `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e ingresos realizados de `$11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
+
+Si no hay producción, el costo unitario y el costo de lo vendido son `null`; si no existe una base válida, el indicador porcentual correspondiente también es `null`.
 
 ### Anthropic y fallback
 

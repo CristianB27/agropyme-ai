@@ -11,6 +11,11 @@ const decimalFormatter = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 2,
 });
 
+const percentFormatter = new Intl.NumberFormat("es-CO", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
+
 function normalize(value: string): string {
   return value
     .normalize("NFD")
@@ -22,7 +27,11 @@ function normalize(value: string): string {
 function formatPercent(value: number | null): string {
   return value === null
     ? "no calculable"
-    : `${decimalFormatter.format(value * 100)} %`;
+    : `${percentFormatter.format(value * 100)} %`;
+}
+
+function formatCurrency(value: number | null): string {
+  return value === null ? "no calculable" : currencyFormatter.format(value);
 }
 
 function cycleMatchesQuestion(
@@ -69,11 +78,11 @@ function answerCost(cycle: CycleSummary | undefined): string {
   if (!cycle) {
     return "No tienes ciclos productivos registrados, así que todavía no puedo calcular costos de producción.";
   }
-  const perKg = cycle.costoPorKg === null
+  const perKg = cycle.costoUnitario === null
     ? ""
-    : ` El costo por kilogramo producido es ${
-      decimalFormatter.format(cycle.costoPorKg)
-    } COP.`;
+    : ` El costo unitario de producción es ${
+      decimalFormatter.format(cycle.costoUnitario)
+    } COP por kg.`;
   const partial = cycle.pendienteKg > 0
     ? cycle.vendidoKg > 0
       ? " La cosecha está parcialmente vendida, por lo que el resultado financiero aún es parcial."
@@ -90,7 +99,7 @@ function answerCost(cycle: CycleSummary | undefined): string {
   }.${perKg}${partial}`;
 }
 
-function answerProfitability(summary: DataSummary): string {
+function answerProfitability(summary: DataSummary, question: string): string {
   const cyclesWithSales = summary.ciclos.filter((cycle) =>
     cycle.ingresosRealizados > 0
   );
@@ -98,20 +107,35 @@ function answerProfitability(summary: DataSummary): string {
     return "Todavía no hay ventas registradas en tus ciclos, por lo que aún no es posible calcular rentabilidad realizada.";
   }
 
-  const best =
+  const mentioned = [...cyclesWithSales]
+    .map((cycle) => ({
+      cycle,
+      score: cycleMatchesQuestion(cycle, normalize(question)),
+    }))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score)[0]?.cycle;
+  const best = mentioned ??
     [...cyclesWithSales].sort((left, right) =>
-      right.utilidadRealizada - left.utilidadRealizada
+      (right.rentabilidadSobreCostos ?? Number.NEGATIVE_INFINITY) -
+      (left.rentabilidadSobreCostos ?? Number.NEGATIVE_INFINITY)
     )[0];
   const partial = best.esParcial
     ? ` Quedan ${
       decimalFormatter.format(best.pendienteKg)
-    } kg sin vender, así que la utilidad realizada es parcial.`
+    } kg sin vender, así que el resultado financiero del ciclo es parcial.`
     : "";
-  return `El ciclo con mayor utilidad realizada es ${best.cultivo} en ${best.lote} (${best.finca}): ingresos por ventas ${
+  const cycleDescription = mentioned
+    ? `El ciclo de ${best.cultivo} en ${best.lote} (${best.finca})`
+    : `El ciclo con mayor rentabilidad sobre el costo de lo vendido es ${best.cultivo} en ${best.lote} (${best.finca})`;
+  return `${cycleDescription}: ingresos por ventas ${
     currencyFormatter.format(best.ingresosRealizados)
-  }, costos ${currencyFormatter.format(best.costoTotal)} y utilidad ${
-    currencyFormatter.format(best.utilidadRealizada)
-  }. La rentabilidad sobre costos es ${
+  }, costo total ${
+    currencyFormatter.format(best.costoTotal)
+  }, costo de lo vendido ${
+    formatCurrency(best.costoDeLoVendido)
+  } y margen realizado ${
+    formatCurrency(best.margenRealizado)
+  }. La rentabilidad sobre costo de lo vendido es ${
     formatPercent(best.rentabilidadSobreCostos)
   } y el margen sobre ventas es ${
     formatPercent(best.margenSobreVentas)
@@ -192,8 +216,10 @@ function answerSummary(summary: DataSummary): string {
     currencyFormatter.format(summary.totales.costos)
   }, los ingresos realizados ${
     currencyFormatter.format(summary.totales.ingresos)
-  } y la utilidad realizada ${
-    currencyFormatter.format(summary.totales.utilidad)
+  }, el costo de lo vendido ${
+    currencyFormatter.format(summary.totales.costoDeLoVendido)
+  } y el margen realizado ${
+    currencyFormatter.format(summary.totales.margenRealizado)
   }. Has producido ${
     decimalFormatter.format(summary.totales.produccionKg)
   } kg y vendido ${decimalFormatter.format(summary.totales.vendidoKg)} kg.`;
@@ -218,7 +244,7 @@ export function deterministicAnswer(
     normalized.includes("utilidad") || normalized.includes("ganancia") ||
     normalized.includes("margen")
   ) {
-    return answerProfitability(summary);
+    return answerProfitability(summary, question);
   }
   if (
     normalized.includes("jornal") || normalized.includes("mano de obra") ||

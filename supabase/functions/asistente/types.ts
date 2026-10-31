@@ -121,12 +121,13 @@ export interface CycleSummary {
   costoOtros: number;
   costoTotal: number;
   costoPorHectarea: number;
-  costoPorKg: number | null;
+  costoUnitario: number | null;
   produccionKg: number;
   vendidoKg: number;
   pendienteKg: number;
   ingresosRealizados: number;
-  utilidadRealizada: number;
+  costoDeLoVendido: number | null;
+  margenRealizado: number | null;
   rentabilidadSobreCostos: number | null;
   margenSobreVentas: number | null;
   jornales: number;
@@ -152,7 +153,8 @@ export interface DataSummary {
     ciclos: number;
     costos: number;
     ingresos: number;
-    utilidad: number;
+    costoDeLoVendido: number;
+    margenRealizado: number;
     produccionKg: number;
     vendidoKg: number;
   };

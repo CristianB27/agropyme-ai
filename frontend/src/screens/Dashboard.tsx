@@ -9,7 +9,14 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import type { ClimaFinca, Finca } from '../types';
-import { calcularCiclo, cicloLabel, getLote, getFinca, getCultivo } from '../utils/calculos';
+import {
+  calcularCiclo,
+  calcularResultadoProyectado,
+  cicloLabel,
+  getLote,
+  getFinca,
+  getCultivo,
+} from '../utils/calculos';
 import { formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../utils/format';
 
 const COLORS = ['#2E7D32', '#66BB6A', '#A5D6A7'];
@@ -188,9 +195,9 @@ export default function Dashboard() {
   ];
 
   const precioEst = Number(precioEstimado) || 0;
-  const ingresoEstimado = calc.Qnv * precioEst;
-  const ingresoTotalEstimado = calc.ingresosRealizados + ingresoEstimado;
-  const utilidadEstimada = ingresoTotalEstimado - calc.costoTotal;
+  const ingresoEstimadoPorVender = calc.Qnv * precioEst;
+  const ingresoTotalProyectado = calc.ingresosRealizados + ingresoEstimadoPorVender;
+  const resultadoProyectado = calcularResultadoProyectado(calc, precioEst);
 
   const primaryCards = [
     {
@@ -208,7 +215,7 @@ export default function Dashboard() {
       parcial: calc.esParcial,
     },
     {
-      label: 'Rentabilidad sobre costos',
+      label: 'Rentabilidad sobre costo de lo vendido',
       value: calc.rentabilidadSobreCostos !== null ? formatPercent(calc.rentabilidadSobreCostos * 100) : 'No disponible',
       icon: Percent,
       color: '#7B1FA2',
@@ -225,11 +232,18 @@ export default function Dashboard() {
       parcial: false,
     },
     {
-      label: 'Costo por unidad producida',
-      value: calc.costoPorUnidad !== null ? `${formatCOPDecimals(calc.costoPorUnidad)}/${calc.unidad}` : 'No disponible',
+      label: 'Costo unitario producido (C/Q)',
+      value: calc.costoUnitario !== null ? `${formatCOPDecimals(calc.costoUnitario)}/${calc.unidad}` : 'No disponible',
       icon: Wheat,
       color: '#F57C00',
       parcial: false,
+    },
+    {
+      label: 'Costo de lo vendido',
+      value: calc.costoDeLoVendido !== null ? formatCOP(calc.costoDeLoVendido) : 'No disponible',
+      icon: ShoppingCart,
+      color: '#455A64',
+      parcial: calc.esParcial,
     },
     {
       label: 'Rendimiento (kg/ha)',
@@ -246,10 +260,17 @@ export default function Dashboard() {
       parcial: calc.esParcial,
     },
     {
-      label: 'Margen sobre ventas',
-      value: calc.margenSobreVentas !== null ? formatPercent(calc.margenSobreVentas * 100) : 'No disponible',
+      label: 'Margen realizado',
+      value: calc.margenRealizado !== null ? formatCOP(calc.margenRealizado) : 'No disponible',
       icon: Calculator,
       color: '#AD1457',
+      parcial: calc.esParcial,
+    },
+    {
+      label: 'Margen sobre ventas',
+      value: calc.margenSobreVentas !== null ? formatPercent(calc.margenSobreVentas * 100) : 'No disponible',
+      icon: Percent,
+      color: '#C2185B',
       parcial: calc.esParcial,
     },
   ];
@@ -371,7 +392,7 @@ export default function Dashboard() {
             <div className="flex items-start gap-2">
               <Info className="w-4 h-4 text-[#2E7D32] flex-shrink-0 mt-0.5" />
               <p className="text-xs text-gray-700 leading-relaxed">
-                <strong>Rentabilidad sobre costos</strong> mide la utilidad por cada peso invertido. <strong>Margen sobre ventas</strong> mide la utilidad por cada peso vendido. Son medidas distintas y no deben confundirse.
+                <strong>Rentabilidad sobre costo de lo vendido</strong> mide el margen realizado por cada peso de costo vendido. <strong>Margen sobre ventas</strong> mide el margen realizado por cada peso de ingreso. Son medidas distintas y no deben confundirse.
               </p>
             </div>
           </div>
@@ -459,16 +480,16 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Ingreso estimado por sin vender</p>
-                  <p className="text-sm font-bold text-[#1565C0] tnum">{formatCOP(ingresoEstimado)}</p>
+                  <p className="text-[10px] text-gray-500 mb-0.5">Ingreso estimado por venta pendiente</p>
+                  <p className="text-sm font-bold text-[#1565C0] tnum">{formatCOP(ingresoEstimadoPorVender)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Ingreso total proyectado</p>
-                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(ingresoTotalEstimado)}</p>
+                  <p className="text-[10px] text-gray-500 mb-0.5">Ingreso total proyectado (estimación)</p>
+                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(ingresoTotalProyectado)}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[10px] text-gray-500 mb-0.5">Utilidad proyectada</p>
-                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(utilidadEstimada)}</p>
+                  <p className="text-[10px] text-gray-500 mb-0.5">Resultado proyectado (estimación)</p>
+                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(resultadoProyectado)}</p>
                 </div>
               </div>
             </div>

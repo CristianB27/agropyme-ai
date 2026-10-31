@@ -1,5 +1,5 @@
 import { deterministicAnswer } from "./fallback.ts";
-import { buildDataSummary } from "./summary.ts";
+import { buildDataSummary, calcularResultadoProyectado } from "./summary.ts";
 import type { UserData } from "./types.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -8,6 +8,18 @@ function assert(condition: unknown, message: string): asserts condition {
 
 function assertEquals<T>(actual: T, expected: T, message: string): void {
   if (actual !== expected) {
+    throw new Error(
+      `${message}: esperado ${String(expected)}, obtenido ${String(actual)}`,
+    );
+  }
+}
+
+function assertAlmostEquals(
+  actual: number,
+  expected: number,
+  message: string,
+): void {
+  if (Math.abs(actual - expected) > 0.000001) {
     throw new Error(
       `${message}: esperado ${String(expected)}, obtenido ${String(actual)}`,
     );
@@ -147,7 +159,81 @@ const userData: UserData = {
   ],
 };
 
-Deno.test("el resumen consolida costos, producción, ingresos y utilidad por ciclo", () => {
+const ejemploUserData: UserData = {
+  fincas: [{
+    id: "finca-ejemplo",
+    nombre: "Hacienda El Roble",
+    municipio: "María la Baja",
+    latitud: 9.98,
+    longitud: -75.3,
+  }],
+  lotes: [{
+    id: "lote-norte",
+    finca_id: "finca-ejemplo",
+    nombre: "Lote Norte",
+    area_ha: 2,
+  }],
+  ciclos: [{
+    id: "ciclo-maiz",
+    lote_id: "lote-norte",
+    cultivo_id: "cultivo-maiz",
+    fecha_inicio: "2026-01-01",
+    fecha_fin: null,
+    estado: "activo",
+  }],
+  cultivos: [{ id: "cultivo-maiz", nombre: "Maíz" }],
+  actividades: [{
+    id: "actividad-siembra",
+    ciclo_id: "ciclo-maiz",
+    tipo: "Siembra",
+    fecha: "2026-01-02",
+    descripcion: "Siembra de maíz",
+    otros_costos: 1_356_000,
+  }],
+  insumos: [{
+    id: "insumo-ciclo",
+    ciclo_id: "ciclo-maiz",
+    actividad_id: "actividad-siembra",
+    fecha: "2026-01-02",
+    nombre: "Insumos del ciclo",
+    cantidad: 1,
+    costo_unitario: 6_000_000,
+  }],
+  manoDeObra: [{
+    id: "jornal-ciclo",
+    ciclo_id: "ciclo-maiz",
+    actividad_id: "actividad-siembra",
+    fecha: "2026-01-03",
+    num_jornales: 10,
+    valor_jornal: 150_000,
+  }],
+  cosechas: [{
+    id: "cosecha-ciclo",
+    ciclo_id: "ciclo-maiz",
+    fecha: "2026-06-01",
+    cantidad_kg: 11_250,
+  }],
+  ventas: [
+    {
+      id: "venta-ciclo-1",
+      ciclo_id: "ciclo-maiz",
+      fecha: "2026-06-02",
+      cantidad_kg: 9_000,
+      precio_unitario: 1_100,
+      comprador: "Mercado A",
+    },
+    {
+      id: "venta-ciclo-2",
+      ciclo_id: "ciclo-maiz",
+      fecha: "2026-06-03",
+      cantidad_kg: 1_500,
+      precio_unitario: 1_250,
+      comprador: "Mercado B",
+    },
+  ],
+};
+
+Deno.test("el resumen consolida costos, producción, ingresos y margen por ciclo", () => {
   const summary = buildDataSummary(userData);
   const first = summary.ciclos.find((cycle) => cycle.id === "ciclo-1");
   const second = summary.ciclos.find((cycle) => cycle.id === "ciclo-2");
@@ -163,7 +249,17 @@ Deno.test("el resumen consolida costos, producción, ingresos y utilidad por cic
   assertEquals(first.costoOtros, 3000, "Otros costos del primer ciclo");
   assertEquals(first.costoTotal, 353000, "Costo total del primer ciclo");
   assertEquals(first.ingresosRealizados, 600000, "Ingresos del primer ciclo");
-  assertEquals(first.utilidadRealizada, 247000, "Utilidad del primer ciclo");
+  assertEquals(first.costoUnitario, 706, "Costo unitario del primer ciclo");
+  assertEquals(
+    first.costoDeLoVendido,
+    141200,
+    "Costo de lo vendido del primer ciclo",
+  );
+  assertEquals(
+    first.margenRealizado,
+    458800,
+    "Margen realizado del primer ciclo",
+  );
   assertEquals(
     first.pendienteKg,
     300,
@@ -171,7 +267,85 @@ Deno.test("el resumen consolida costos, producción, ingresos y utilidad por cic
   );
   assertEquals(summary.totales.costos, 627000, "Costo total consolidado");
   assertEquals(summary.totales.ingresos, 2700000, "Ingresos consolidados");
-  assertEquals(summary.totales.utilidad, 2073000, "Utilidad consolidada");
+  assertAlmostEquals(
+    summary.totales.costoDeLoVendido,
+    376057.142857,
+    "Costo de lo vendido consolidado",
+  );
+  assertAlmostEquals(
+    summary.totales.margenRealizado,
+    2323942.857143,
+    "Margen realizado consolidado",
+  );
+});
+
+Deno.test("el ciclo de ejemplo aplica el Paso 4 y proyecta el resultado estimado", () => {
+  const summary = buildDataSummary(ejemploUserData);
+  const cycle = summary.ciclos[0];
+
+  assert(cycle, "Debe resumir el ciclo de maíz de Lote Norte.");
+  assertEquals(cycle.costoTotal, 8_856_000, "Costo total del ciclo de ejemplo");
+  assertEquals(cycle.produccionKg, 11_250, "Producción del ciclo de ejemplo");
+  assertEquals(cycle.vendidoKg, 10_500, "Vendido del ciclo de ejemplo");
+  assertEquals(cycle.pendienteKg, 750, "Pendiente del ciclo de ejemplo");
+  assertEquals(
+    cycle.ingresosRealizados,
+    11_775_000,
+    "Ingresos del ciclo de ejemplo",
+  );
+  assertAlmostEquals(
+    cycle.costoUnitario!,
+    787.2,
+    "Costo unitario del ciclo de ejemplo",
+  );
+  assertAlmostEquals(
+    cycle.costoDeLoVendido!,
+    8_265_600,
+    "Costo de lo vendido del ciclo de ejemplo",
+  );
+  assertAlmostEquals(
+    cycle.margenRealizado!,
+    3_509_400,
+    "Margen realizado del ciclo de ejemplo",
+  );
+  assertAlmostEquals(
+    cycle.margenSobreVentas!,
+    0.298038216561,
+    "Margen sobre ventas del ciclo de ejemplo",
+  );
+  assertAlmostEquals(
+    cycle.rentabilidadSobreCostos!,
+    0.424578977933,
+    "Rentabilidad sobre costos del ciclo de ejemplo",
+  );
+  assertEquals(
+    calcularResultadoProyectado(cycle, 1_150),
+    3_781_500,
+    "Resultado proyectado del ciclo de ejemplo",
+  );
+
+  const answer = deterministicAnswer(
+    "¿Cuál es la rentabilidad y el margen sobre ventas del maíz de Lote Norte?",
+    summary,
+  );
+  assert(answer.includes("Maíz"), "El fallback debe nombrar el maíz.");
+  assert(answer.includes("Lote Norte"), "El fallback debe nombrar Lote Norte.");
+  assert(
+    answer.includes("8.265.600"),
+    "El fallback debe mostrar el costo de lo vendido.",
+  );
+  assert(
+    answer.includes("3.509.400"),
+    "El fallback debe mostrar el margen realizado.",
+  );
+  assert(
+    answer.includes("42,5 %"),
+    "El fallback debe mostrar la rentabilidad del 42,5 %.",
+  );
+  assert(
+    answer.includes("29,8 %"),
+    "El fallback debe mostrar el margen sobre ventas del 29,8 %.",
+  );
 });
 
 Deno.test("el fallback responde con el ciclo mencionado y sus datos consolidados", () => {
@@ -187,7 +361,7 @@ Deno.test("el fallback responde con el ciclo mencionado y sus datos consolidados
   assert(answer.includes("353.000"), "Debe mostrar el costo total real.");
 });
 
-Deno.test("el fallback selecciona el ciclo con mayor utilidad realizada", () => {
+Deno.test("el fallback selecciona el ciclo con mayor rentabilidad sobre lo vendido", () => {
   const summary = buildDataSummary(userData);
   const answer = deterministicAnswer(
     "¿Qué ciclo ha sido más rentable y cuál es el margen sobre ventas?",
@@ -196,7 +370,7 @@ Deno.test("el fallback selecciona el ciclo con mayor utilidad realizada", () => 
 
   assert(
     answer.includes("Yuca Real"),
-    "Debe seleccionar el segundo ciclo por su mayor utilidad.",
+    "Debe seleccionar el segundo ciclo por su mayor rentabilidad.",
   );
   assert(
     answer.includes("Lote Sur"),

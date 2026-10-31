@@ -11,6 +11,7 @@ El repositorio contiene dos componentes relacionados:
 
 - Persistencia en Supabase con UUID, relaciones compuestas y RLS por `auth.uid()`.
 - Conversión automática de cosechas y ventas a kg mediante el factor de la unidad.
+- Indicadores financieros alineados entre Dashboard y Asistente IA: margen realizado sobre el costo de lo vendido, rentabilidad sobre costos, margen sobre ventas y resultado proyectado rotulado como estimación.
 - Pronóstico real de cinco días por finca con Open-Meteo, caché en el navegador y alerta de lluvia.
 - AsistenteIA conectado a una Supabase Edge Function. Consulta los datos del usuario aplicando RLS, usa Anthropic cuando hay clave configurada y responde con un fallback determinístico calculado sobre los mismos datos reales cuando no la hay o Anthropic falla.
 - La función `asistente` está publicada en el proyecto enlazado con `verify_jwt = true`.
@@ -93,6 +94,7 @@ cd frontend
 npm run typecheck
 npm run lint
 npm run build
+npm test
 
 # Edge Function
 cd ..
