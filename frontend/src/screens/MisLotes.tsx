@@ -1,18 +1,21 @@
 import { useState, useMemo } from 'react';
-import { MapPin, Plus, Eye, Receipt, X, CheckCircle2, Sprout, Layers, Ruler } from 'lucide-react';
+import { MapPin, Plus, Eye, Receipt, X, CheckCircle2, Sprout, Layers, Ruler, Pencil } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import MunicipioDaneSelect from '../components/MunicipioDaneSelect';
 import { calcularCiclo, getCultivo, getFinca } from '../utils/calculos';
 import { formatCOP, formatNumber } from '../utils/format';
 import type { ScreenId } from '../components/Layout';
+import type { Finca } from '../types';
 
 interface MisLotesProps {
   onNavigate: (id: ScreenId) => void;
 }
 
 export default function MisLotes({ onNavigate }: MisLotesProps) {
-  const { data, loading, error, refresh, addFinca, addLote, addCiclo, setSelectedLoteForCost, setSelectedCicloForCost } = useApp();
+  const { data, loading, error, refresh, addFinca, updateFincaCodMun, addLote, addCiclo, setSelectedLoteForCost, setSelectedCicloForCost } = useApp();
   const [detailLoteId, setDetailLoteId] = useState<string | null>(null);
-  const [modal, setModal] = useState<'finca' | 'lote' | 'ciclo' | null>(null);
+  const [modal, setModal] = useState<'finca' | 'lote' | 'ciclo' | 'municipio' | null>(null);
+  const [fincaMunicipioId, setFincaMunicipioId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -98,7 +101,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                 <p className="text-xs text-gray-500">{finca.municipio}</p>
               </div>
             </div>
-            <div className="flex gap-4 mt-3 pt-3 border-t border-gray-100">
+            <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100">
               <div className="flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-gray-400" />
                 <span className="text-xs text-gray-600">{lotesCount} {lotesCount === 1 ? 'lote' : 'lotes'}</span>
@@ -107,6 +110,17 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                 <Ruler className="w-4 h-4 text-gray-400" />
                 <span className="text-xs text-gray-600 tnum">{formatNumber(areaTotal, 1)} ha</span>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFincaMunicipioId(finca.id);
+                  setModal('municipio');
+                }}
+                className="ml-auto flex items-center gap-1 text-xs font-medium text-[#2E7D32] hover:underline focus:outline-none focus:ring-2 focus:ring-[#2E7D32] rounded"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                {finca.cod_mun ? 'Editar municipio DANE' : 'Agregar municipio DANE'}
+              </button>
             </div>
           </div>
         ))}
@@ -220,6 +234,22 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
               showToast('Ciclo creado correctamente');
             } catch (caughtError) {
               showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el ciclo');
+            }
+          }}
+        />
+      )}
+      {modal === 'municipio' && fincaMunicipioId && (
+        <FincaMunicipioModal
+          finca={data.fincas.find((finca) => finca.id === fincaMunicipioId)}
+          onClose={() => setModal(null)}
+          onSave={async (codMun) => {
+            try {
+              await updateFincaCodMun(fincaMunicipioId, codMun);
+              setModal(null);
+              setFincaMunicipioId(null);
+              showToast('Municipio DANE actualizado correctamente');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo actualizar el municipio DANE');
             }
           }}
         />
@@ -379,9 +409,10 @@ function FieldError({ show }: { show: boolean }) {
   return <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>;
 }
 
-function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { nombre: string; municipio: string; latitud: number; longitud: number }) => void }) {
+function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { nombre: string; municipio: string; cod_mun: string | null; latitud: number; longitud: number }) => void }) {
   const [nombre, setNombre] = useState('');
   const [municipio, setMunicipio] = useState('');
+  const [codMun, setCodMun] = useState<string | null>(null);
   const [latitud, setLatitud] = useState('');
   const [longitud, setLongitud] = useState('');
   const [errors, setErrors] = useState({ nombre: false, municipio: false, latitud: false, longitud: false });
@@ -395,7 +426,7 @@ function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { no
     };
     setErrors(e);
     if (Object.values(e).some(Boolean)) return;
-    onSave({ nombre: nombre.trim(), municipio: municipio.trim(), latitud: Number(latitud), longitud: Number(longitud) });
+    onSave({ nombre: nombre.trim(), municipio: municipio.trim(), cod_mun: codMun, latitud: Number(latitud), longitud: Number(longitud) });
   };
 
   return (
@@ -411,6 +442,17 @@ function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { no
           <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. San Juan" />
           <FieldError show={errors.municipio} />
         </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Municipio (DANE)</label>
+          <MunicipioDaneSelect
+            value={codMun}
+            onChange={(codigo, municipioDane) => {
+              setCodMun(codigo);
+              if (municipioDane) setMunicipio(municipioDane);
+            }}
+          />
+          <p className="text-xs text-gray-400 mt-1">Opcional. Permite comparar el ciclo con referencias históricas del municipio.</p>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Latitud</label>
@@ -424,6 +466,35 @@ function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { no
           </div>
         </div>
         <button onClick={handleSave} className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors">
+          Guardar
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function FincaMunicipioModal({ finca, onClose, onSave }: { finca?: Finca; onClose: () => void; onSave: (codMun: string | null) => void }) {
+  const [codMun, setCodMun] = useState<string | null>(finca?.cod_mun ?? null);
+
+  if (!finca) return null;
+
+  return (
+    <ModalShell title="Municipio (DANE)" onClose={onClose}>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Municipio de {finca.nombre}
+          </label>
+          <MunicipioDaneSelect value={codMun} onChange={setCodMun} />
+          <p className="text-xs text-gray-400 mt-1">
+            Opcional. Puedes dejar el selector vacío o limpiarlo para quitar la referencia DANE.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSave(codMun)}
+          className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors"
+        >
           Guardar
         </button>
       </div>

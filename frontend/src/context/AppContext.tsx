@@ -8,6 +8,7 @@ import {
   createLote,
   createManoDeObra,
   loadAppData,
+  updateFincaCodMun,
   type NuevaActividad,
   type NuevoCiclo,
   type NuevaFinca,
@@ -40,6 +41,7 @@ interface AppContextValue {
   refresh: () => Promise<void>;
   refreshClima: () => Promise<void>;
   addFinca: (finca: NuevaFinca) => Promise<Finca>;
+  updateFincaCodMun: (fincaId: string, codMun: string | null) => Promise<Finca>;
   addLote: (lote: NuevoLote) => Promise<Lote>;
   addCiclo: (ciclo: NuevoCiclo) => Promise<CicloProductivo>;
   addInsumo: (insumo: NuevoInsumo) => Promise<Insumo>;
@@ -125,6 +127,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
+  const updateFincaCodMunCallback = useCallback(async (fincaId: string, codMun: string | null) => {
+    const updated = await updateFincaCodMun(fincaId, codMun);
+    setData((previous) => ({
+      ...previous,
+      fincas: previous.fincas.map((finca) => finca.id === updated.id ? updated : finca),
+    }));
+    return updated;
+  }, []);
+
   const addLote = useCallback(async (lote: NuevoLote) => {
     const created = await createLote(lote);
     setData((previous) => ({ ...previous, lotes: [...previous.lotes, created] }));
@@ -156,10 +167,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AppContextValue>(() => ({
-    data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll, addFinca, addLote, addCiclo, addInsumo,
+    data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll, addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, addCiclo, addInsumo,
     addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost,
     setSelectedLoteForCost, setSelectedCicloForCost,
-  }), [data, loading, climaLoading, error, refresh, refreshClimaForAll, addFinca, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
+  }), [data, loading, climaLoading, error, refresh, refreshClimaForAll, addFinca, updateFincaCodMunCallback, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

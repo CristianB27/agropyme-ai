@@ -167,6 +167,20 @@ export async function createFinca(finca: NuevaFinca): Promise<Finca> {
   return insertAndMap('fincas', { ...finca, cod_mun: finca.cod_mun ?? null }, mapFinca);
 }
 
+export async function updateFincaCodMun(
+  fincaId: string,
+  codMun: string | null,
+): Promise<Finca> {
+  const { data, error } = await supabase
+    .from('fincas')
+    .update({ cod_mun: codMun })
+    .eq('id', fincaId)
+    .select('*')
+    .single();
+  assertError(error);
+  return mapFinca(data as RawRow);
+}
+
 export async function createLote(lote: NuevoLote): Promise<Lote> {
   return insertAndMap('lotes', lote, mapLote);
 }
