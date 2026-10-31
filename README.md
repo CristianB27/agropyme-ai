@@ -1,8 +1,119 @@
 # AGROPYME TEST
 
-Proyecto con una aplicación frontend y un pipeline ETL en Python para consolidar y publicar los datos EVA de MADR.
+El repositorio contiene dos componentes relacionados:
 
-## Requisitos
+- **AgroPyme AI web:** aplicación React/TypeScript para registrar fincas, lotes, ciclos, costos, jornales, cosechas y ventas con persistencia real en Supabase.
+- **Pipeline ML:** proceso en Python para consolidar, analizar y publicar los datos EVA de MADR.
+
+## AgroPyme AI web
+
+### Estado actual
+
+- Persistencia en Supabase con UUID, relaciones compuestas y RLS por `auth.uid()`.
+- Conversión automática de cosechas y ventas a kg mediante el factor de la unidad.
+- Pronóstico real de cinco días por finca con Open-Meteo, caché en el navegador y alerta de lluvia.
+- AsistenteIA conectado a una Supabase Edge Function. Consulta los datos del usuario aplicando RLS, usa Anthropic cuando hay clave configurada y responde con un fallback determinístico calculado sobre los mismos datos reales cuando no la hay o Anthropic falla.
+- La función `asistente` está publicada en el proyecto enlazado con `verify_jwt = true`.
+
+### Requisitos del frontend
+
+- Node.js 18 o posterior.
+- Un proyecto Supabase enlazado y aplicado.
+
+### Configuración local
+
+Desde `frontend/`:
+
+```powershell
+npm install
+Copy-Item .env.example .env
+```
+
+Completa en `.env` los valores públicos del proyecto:
+
+```dotenv
+VITE_SUPABASE_URL=https://TU_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA
+```
+
+No añadas `ANTHROPIC_API_KEY` al frontend. Es una credencial server-side y únicamente debe existir como secreto de Supabase Edge Functions.
+
+Inicia la aplicación:
+
+```powershell
+npm run dev
+```
+
+### Aplicar la base de datos
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd db push --linked
+```
+
+Las migraciones están en `supabase/migrations/`. El esquema, RLS, catálogos y triggers se documentan en [`docs/esquema.md`](docs/esquema.md).
+
+### Clima real
+
+El frontend consulta Open-Meteo directamente usando las coordenadas guardadas de cada finca:
+
+- pronóstico diario de cinco días;
+- caché en memoria segmentada por UUID de finca y coordenadas;
+- timeout, estado de error y botón **Reintentar pronóstico**;
+- alerta informativa cuando se prevén lluvias de 40 mm o más.
+
+Open-Meteo no requiere clave API. La carga del clima no bloquea el render principal de la aplicación.
+
+### Asistente IA y secretos
+
+La Edge Function está en `supabase/functions/asistente/`. Para habilit la respuesta generativa de Anthropic, configura el secreto sin escribirlo en Git ni en variables `VITE_*`:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd secrets set ANTHROPIC_API_KEY=CLAVE_DE_ANTHROPIC
+```
+
+Opcionalmente se puede fijar el modelo:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd secrets set ANTHROPIC_MODEL=claude-sonnet-5-5
+```
+
+Publica o actualiza la función sin requerir Docker:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref TU_PROJECT_REF --use-api
+```
+
+Sin `ANTHROPIC_API_KEY`, o si Anthropic no responde, la misma función devuelve `source: "fallback"` con cálculos sobre los datos reales del usuario. El chat identifica esa respuesta como determinística y muestra el aviso de fallback. Nunca usa datos simulados para una sesión autenticada.
+
+### Validación
+
+```powershell
+# Frontend
+cd frontend
+npm run typecheck
+npm run lint
+npm run build
+
+# Edge Function
+cd ..
+npx --yes deno fmt --check supabase/functions/asistente
+npx --yes deno lint supabase/functions/asistente
+npx --yes deno check supabase/functions/asistente/index.ts supabase/functions/asistente/asistente_test.ts
+npx --yes deno test supabase/functions/asistente/asistente_test.ts
+
+# SQL (todas las pruebas se revierten al terminar)
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\rls_dos_usuarios.sql
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\cantidad_kg.sql
+```
+
+### Pendientes de operación
+
+- Configurar `ANTHROPIC_API_KEY` para activar respuestas generativas; el fallback ya está operativo.
+- Publicar el frontend en Vercel, Netlify, Cloudflare Pages u otro hosting estático y configurar sus variables `VITE_*`.
+- Revisar la confirmación de correo de las cuentas nuevas según la política de Supabase del proyecto.
+- Realizar una prueba visual final en el hosting publicado.
+
+## Requisitos del pipeline ML
 
 - Python 3.12 (probado con Python 3.12.10 en Windows).
 - Los dos archivos fuente de MADR (EVA) descritos a continuación.
