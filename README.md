@@ -37,7 +37,6 @@ VITE_SUPABASE_URL=https://TU_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA
 ```
 
-No añadas `ANTHROPIC_API_KEY` al frontend. Es una credencial server-side y únicamente debe existir como secreto de Supabase Edge Functions.
 
 Inicia la aplicación:
 
