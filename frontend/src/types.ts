@@ -1,50 +1,49 @@
-export interface Usuario {
-  id: number;
-  nombre: string;
-  correo: string;
-  rol: string;
-}
+export type EntityId = string;
 
 export interface Proveedor {
-  id: number;
-  usuario_id: number;
+  id: EntityId;
+  user_id: EntityId;
   nombre: string;
-  contacto: string;
+  contacto: string | null;
 }
 
 export interface Finca {
-  id: number;
-  usuario_id: number;
+  id: EntityId;
+  user_id: EntityId;
   nombre: string;
   municipio: string;
+  cod_mun: string | null;
   latitud: number;
   longitud: number;
 }
 
 export interface Lote {
-  id: number;
-  finca_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  finca_id: EntityId;
   nombre: string;
   area_ha: number;
 }
 
 export interface Cultivo {
-  id: number;
+  id: EntityId;
   nombre: string;
 }
 
 export interface CicloProductivo {
-  id: number;
-  lote_id: number;
-  cultivo_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  lote_id: EntityId;
+  cultivo_id: EntityId;
   fecha_inicio: string;
   fecha_fin: string | null;
   estado: 'Activo' | 'Finalizado';
 }
 
 export interface Actividad {
-  id: number;
-  ciclo_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
   tipo: string;
   fecha: string;
   descripcion: string;
@@ -52,10 +51,11 @@ export interface Actividad {
 }
 
 export interface Insumo {
-  id: number;
-  ciclo_id: number;
-  actividad_id: number;
-  proveedor_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
+  actividad_id: EntityId | null;
+  proveedor_id: EntityId | null;
   fecha: string;
   nombre: string;
   cantidad: number;
@@ -64,31 +64,43 @@ export interface Insumo {
 }
 
 export interface ManoDeObra {
-  id: number;
-  ciclo_id: number;
-  actividad_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
+  actividad_id: EntityId | null;
   fecha: string;
   num_jornales: number;
   valor_jornal: number;
 }
 
+export interface Unidad {
+  id: EntityId;
+  nombre: string;
+  factor_a_kg: number;
+}
+
 export interface Cosecha {
-  id: number;
-  ciclo_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
   fecha: string;
   cantidad: number;
+  unidad_id: EntityId;
   unidad: string;
   cantidad_kg: number;
 }
 
 export interface Venta {
-  id: number;
-  ciclo_id: number;
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
   fecha: string;
   cantidad: number;
+  unidad_id: EntityId;
   unidad: string;
   cantidad_kg: number;
   precio_unitario: number;
+  comprador: string | null;
 }
 
 export interface PronosticoDia {
@@ -99,13 +111,12 @@ export interface PronosticoDia {
 }
 
 export interface ClimaFinca {
-  finca_id: number;
+  finca_id: EntityId;
   pronostico: PronosticoDia[];
   alerta: string | null;
 }
 
 export type AppData = {
-  usuarios: Usuario[];
   proveedores: Proveedor[];
   fincas: Finca[];
   lotes: Lote[];
@@ -114,6 +125,7 @@ export type AppData = {
   actividades: Actividad[];
   insumos: Insumo[];
   mano_de_obra: ManoDeObra[];
+  unidades: Unidad[];
   cosechas: Cosecha[];
   ventas: Venta[];
   clima: ClimaFinca[];

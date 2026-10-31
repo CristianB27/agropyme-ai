@@ -32,39 +32,39 @@ export interface CicloCalculo {
   esParcial: boolean;
 }
 
-export function getLote(data: AppData, loteId: number): Lote | undefined {
+export function getLote(data: AppData, loteId: string): Lote | undefined {
   return data.lotes.find((l) => l.id === loteId);
 }
 
-export function getFinca(data: AppData, fincaId: number): Finca | undefined {
+export function getFinca(data: AppData, fincaId: string): Finca | undefined {
   return data.fincas.find((f) => f.id === fincaId);
 }
 
-export function getCultivo(data: AppData, cultivoId: number): Cultivo | undefined {
+export function getCultivo(data: AppData, cultivoId: string): Cultivo | undefined {
   return data.cultivos.find((c) => c.id === cultivoId);
 }
 
-export function getProveedor(data: AppData, proveedorId: number): Proveedor | undefined {
+export function getProveedor(data: AppData, proveedorId: string): Proveedor | undefined {
   return data.proveedores.find((p) => p.id === proveedorId);
 }
 
-export function getActividadesByCiclo(data: AppData, cicloId: number): Actividad[] {
+export function getActividadesByCiclo(data: AppData, cicloId: string): Actividad[] {
   return data.actividades.filter((a) => a.ciclo_id === cicloId);
 }
 
-export function getInsumosByCiclo(data: AppData, cicloId: number): Insumo[] {
+export function getInsumosByCiclo(data: AppData, cicloId: string): Insumo[] {
   return data.insumos.filter((i) => i.ciclo_id === cicloId);
 }
 
-export function getManoDeObraByCiclo(data: AppData, cicloId: number): ManoDeObra[] {
+export function getManoDeObraByCiclo(data: AppData, cicloId: string): ManoDeObra[] {
   return data.mano_de_obra.filter((m) => m.ciclo_id === cicloId);
 }
 
-export function getCosechasByCiclo(data: AppData, cicloId: number): Cosecha[] {
+export function getCosechasByCiclo(data: AppData, cicloId: string): Cosecha[] {
   return data.cosechas.filter((c) => c.ciclo_id === cicloId);
 }
 
-export function getVentasByCiclo(data: AppData, cicloId: number): Venta[] {
+export function getVentasByCiclo(data: AppData, cicloId: string): Venta[] {
   return data.ventas.filter((v) => v.ciclo_id === cicloId);
 }
 

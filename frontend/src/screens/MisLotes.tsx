@@ -10,8 +10,8 @@ interface MisLotesProps {
 }
 
 export default function MisLotes({ onNavigate }: MisLotesProps) {
-  const { data, addFinca, addLote, addCiclo, setSelectedLoteForCost, setSelectedCicloForCost } = useApp();
-  const [detailLoteId, setDetailLoteId] = useState<number | null>(null);
+  const { data, loading, error, refresh, addFinca, addLote, addCiclo, setSelectedLoteForCost, setSelectedCicloForCost } = useApp();
+  const [detailLoteId, setDetailLoteId] = useState<string | null>(null);
   const [modal, setModal] = useState<'finca' | 'lote' | 'ciclo' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -37,11 +37,24 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     return { lote, finca, cicloReciente, cultivo, calc };
   });
 
-  const handleRegistrarCosto = (loteId: number, cicloId: number) => {
+  const handleRegistrarCosto = (loteId: string, cicloId: string) => {
     setSelectedLoteForCost(loteId);
     setSelectedCicloForCost(cicloId);
     onNavigate('costos');
   };
+
+  if (loading) {
+    return <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">Cargando tus lotes…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm text-red-700">{error}</p>
+        <button onClick={() => void refresh()} className="mt-3 rounded-lg bg-[#2E7D32] px-4 py-2 text-sm font-semibold text-white">Reintentar</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -172,30 +185,42 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
       {modal === 'finca' && (
         <FincaModal
           onClose={() => setModal(null)}
-          onSave={(f) => {
-            addFinca(f);
-            setModal(null);
-            showToast('Finca creada correctamente');
+          onSave={async (f) => {
+            try {
+              await addFinca(f);
+              setModal(null);
+              showToast('Finca creada correctamente');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear la finca');
+            }
           }}
         />
       )}
       {modal === 'lote' && (
         <LoteModal
           onClose={() => setModal(null)}
-          onSave={(l) => {
-            addLote(l);
-            setModal(null);
-            showToast('Lote creado correctamente');
+          onSave={async (l) => {
+            try {
+              await addLote(l);
+              setModal(null);
+              showToast('Lote creado correctamente');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el lote');
+            }
           }}
         />
       )}
       {modal === 'ciclo' && (
         <CicloModal
           onClose={() => setModal(null)}
-          onSave={(c) => {
-            addCiclo(c);
-            setModal(null);
-            showToast('Ciclo creado correctamente');
+          onSave={async (c) => {
+            try {
+              await addCiclo(c);
+              setModal(null);
+              showToast('Ciclo creado correctamente');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el ciclo');
+            }
           }}
         />
       )}
@@ -212,7 +237,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     </div>
   );
 
-  function DetailPanel({ loteId, onClose }: { loteId: number; onClose: () => void }) {
+  function DetailPanel({ loteId, onClose }: { loteId: string; onClose: () => void }) {
     const lote = data.lotes.find((l) => l.id === loteId);
     const finca = lote ? getFinca(data, lote.finca_id) : undefined;
     const ciclos = data.ciclos_productivos.filter((c) => c.lote_id === loteId);
@@ -406,7 +431,7 @@ function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { no
   );
 }
 
-function LoteModal({ onClose, onSave }: { onClose: () => void; onSave: (l: { finca_id: number; nombre: string; area_ha: number }) => void }) {
+function LoteModal({ onClose, onSave }: { onClose: () => void; onSave: (l: { finca_id: string; nombre: string; area_ha: number }) => void }) {
   const { data } = useApp();
   const [fincaId, setFincaId] = useState(data.fincas[0]?.id?.toString() ?? '');
   const [nombre, setNombre] = useState('');
@@ -421,7 +446,7 @@ function LoteModal({ onClose, onSave }: { onClose: () => void; onSave: (l: { fin
     };
     setErrors(e);
     if (Object.values(e).some(Boolean)) return;
-    onSave({ finca_id: Number(fincaId), nombre: nombre.trim(), area_ha: Number(areaHa) });
+    onSave({ finca_id: fincaId, nombre: nombre.trim(), area_ha: Number(areaHa) });
   };
 
   return (
@@ -453,7 +478,7 @@ function LoteModal({ onClose, onSave }: { onClose: () => void; onSave: (l: { fin
   );
 }
 
-function CicloModal({ onClose, onSave }: { onClose: () => void; onSave: (c: { lote_id: number; cultivo_id: number; fecha_inicio: string }) => void }) {
+function CicloModal({ onClose, onSave }: { onClose: () => void; onSave: (c: { lote_id: string; cultivo_id: string; fecha_inicio: string }) => void }) {
   const { data } = useApp();
   const [loteId, setLoteId] = useState('');
   const [cultivoId, setCultivoId] = useState('');
@@ -468,7 +493,7 @@ function CicloModal({ onClose, onSave }: { onClose: () => void; onSave: (c: { lo
     };
     setErrors(e);
     if (Object.values(e).some(Boolean)) return;
-    onSave({ lote_id: Number(loteId), cultivo_id: Number(cultivoId), fecha_inicio: fechaInicio });
+    onSave({ lote_id: loteId, cultivo_id: cultivoId, fecha_inicio: fechaInicio });
   };
 
   return (

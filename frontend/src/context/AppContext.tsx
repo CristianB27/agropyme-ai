@@ -1,94 +1,120 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { AppData, Finca, Lote, CicloProductivo, Insumo, ManoDeObra, Actividad } from '../types';
-import { mockData } from '../mockData';
+import {
+  createActividad,
+  createCiclo,
+  createFinca,
+  createInsumo,
+  createLote,
+  createManoDeObra,
+  loadAppData,
+  type NuevaActividad,
+  type NuevoCiclo,
+  type NuevaFinca,
+  type NuevoInsumo,
+  type NuevoLote,
+  type NuevaManoDeObra,
+} from '../services/agropyme';
+
+const EMPTY_DATA: AppData = {
+  proveedores: [],
+  fincas: [],
+  lotes: [],
+  cultivos: [],
+  ciclos_productivos: [],
+  actividades: [],
+  insumos: [],
+  mano_de_obra: [],
+  unidades: [],
+  cosechas: [],
+  ventas: [],
+  clima: [],
+};
 
 interface AppContextValue {
   data: AppData;
-  addFinca: (finca: Omit<Finca, 'id' | 'usuario_id'>) => void;
-  addLote: (lote: Omit<Lote, 'id'>) => void;
-  addCiclo: (ciclo: Omit<CicloProductivo, 'id' | 'fecha_fin' | 'estado'>) => void;
-  addInsumo: (insumo: Omit<Insumo, 'id'>) => void;
-  addManoDeObra: (jornal: Omit<ManoDeObra, 'id'>) => void;
-  addActividad: (actividad: Omit<Actividad, 'id'>) => void;
-  selectedLoteForCost: number | null;
-  selectedCicloForCost: number | null;
-  setSelectedLoteForCost: (loteId: number | null) => void;
-  setSelectedCicloForCost: (cicloId: number | null) => void;
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  addFinca: (finca: NuevaFinca) => Promise<Finca>;
+  addLote: (lote: NuevoLote) => Promise<Lote>;
+  addCiclo: (ciclo: NuevoCiclo) => Promise<CicloProductivo>;
+  addInsumo: (insumo: NuevoInsumo) => Promise<Insumo>;
+  addManoDeObra: (jornal: NuevaManoDeObra) => Promise<ManoDeObra>;
+  addActividad: (actividad: NuevaActividad) => Promise<Actividad>;
+  selectedLoteForCost: string | null;
+  selectedCicloForCost: string | null;
+  setSelectedLoteForCost: (loteId: string | null) => void;
+  setSelectedCicloForCost: (cicloId: string | null) => void;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(mockData);
-  const [selectedLoteForCost, setSelectedLoteForCost] = useState<number | null>(null);
-  const [selectedCicloForCost, setSelectedCicloForCost] = useState<number | null>(null);
+  const [data, setData] = useState<AppData>(EMPTY_DATA);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedLoteForCost, setSelectedLoteForCost] = useState<string | null>(null);
+  const [selectedCicloForCost, setSelectedCicloForCost] = useState<string | null>(null);
 
-  const nextId = (arr: { id: number }[]) => (arr.length > 0 ? Math.max(...arr.map((a) => a.id)) + 1 : 1);
+  const refresh = useCallback(async () => {
+    try {
+      setError(null);
+      setData(await loadAppData());
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'No se pudieron cargar los datos.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const addFinca = (finca: Omit<Finca, 'id' | 'usuario_id'>) => {
-    setData((prev) => ({
-      ...prev,
-      fincas: [...prev.fincas, { ...finca, id: nextId(prev.fincas), usuario_id: 1 }],
-    }));
-  };
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const addLote = (lote: Omit<Lote, 'id'>) => {
-    setData((prev) => ({
-      ...prev,
-      lotes: [...prev.lotes, { ...lote, id: nextId(prev.lotes) }],
-    }));
-  };
+  const addFinca = useCallback(async (finca: NuevaFinca) => {
+    const created = await createFinca(finca);
+    setData((previous) => ({ ...previous, fincas: [...previous.fincas, created] }));
+    return created;
+  }, []);
 
-  const addCiclo = (ciclo: Omit<CicloProductivo, 'id' | 'fecha_fin' | 'estado'>) => {
-    setData((prev) => ({
-      ...prev,
-      ciclos_productivos: [
-        ...prev.ciclos_productivos,
-        { ...ciclo, id: nextId(prev.ciclos_productivos), fecha_fin: null, estado: 'Activo' },
-      ],
-    }));
-  };
+  const addLote = useCallback(async (lote: NuevoLote) => {
+    const created = await createLote(lote);
+    setData((previous) => ({ ...previous, lotes: [...previous.lotes, created] }));
+    return created;
+  }, []);
 
-  const addInsumo = (insumo: Omit<Insumo, 'id'>) => {
-    setData((prev) => ({
-      ...prev,
-      insumos: [...prev.insumos, { ...insumo, id: nextId(prev.insumos) }],
-    }));
-  };
+  const addCiclo = useCallback(async (ciclo: NuevoCiclo) => {
+    const created = await createCiclo(ciclo);
+    setData((previous) => ({ ...previous, ciclos_productivos: [...previous.ciclos_productivos, created] }));
+    return created;
+  }, []);
 
-  const addManoDeObra = (jornal: Omit<ManoDeObra, 'id'>) => {
-    setData((prev) => ({
-      ...prev,
-      mano_de_obra: [...prev.mano_de_obra, { ...jornal, id: nextId(prev.mano_de_obra) }],
-    }));
-  };
+  const addInsumo = useCallback(async (insumo: NuevoInsumo) => {
+    const created = await createInsumo(insumo);
+    setData((previous) => ({ ...previous, insumos: [...previous.insumos, created] }));
+    return created;
+  }, []);
 
-  const addActividad = (actividad: Omit<Actividad, 'id'>) => {
-    setData((prev) => ({
-      ...prev,
-      actividades: [...prev.actividades, { ...actividad, id: nextId(prev.actividades) }],
-    }));
-  };
+  const addManoDeObra = useCallback(async (jornal: NuevaManoDeObra) => {
+    const created = await createManoDeObra(jornal);
+    setData((previous) => ({ ...previous, mano_de_obra: [...previous.mano_de_obra, created] }));
+    return created;
+  }, []);
 
-  return (
-    <AppContext.Provider
-      value={{
-        data,
-        addFinca,
-        addLote,
-        addCiclo,
-        addInsumo,
-        addManoDeObra,
-        addActividad,
-        selectedLoteForCost,
-        selectedCicloForCost,
-        setSelectedLoteForCost,
-        setSelectedCicloForCost,
-      }}
-    >
-      {children}
-    </AppContext.Provider>
-  );
+  const addActividad = useCallback(async (actividad: NuevaActividad) => {
+    const created = await createActividad(actividad);
+    setData((previous) => ({ ...previous, actividades: [...previous.actividades, created] }));
+    return created;
+  }, []);
+
+  const value = useMemo<AppContextValue>(() => ({
+    data, loading, error, refresh, addFinca, addLote, addCiclo, addInsumo,
+    addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost,
+    setSelectedLoteForCost, setSelectedCicloForCost,
+  }), [data, loading, error, refresh, addFinca, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

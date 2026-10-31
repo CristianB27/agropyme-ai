@@ -21,21 +21,18 @@ interface RegistroReciente {
 }
 
 export default function RegistroCostos() {
-  const { data, selectedLoteForCost, selectedCicloForCost, setSelectedLoteForCost, setSelectedCicloForCost, addInsumo, addManoDeObra, addActividad } = useApp();
+  const { data, loading, error, refresh, selectedLoteForCost, selectedCicloForCost, setSelectedLoteForCost, setSelectedCicloForCost, addInsumo, addManoDeObra, addActividad } = useApp();
   const [tab, setTab] = useState<Tab>('insumo');
-  const [fecha, setFecha] = useState('2026-10-08');
-  const [toast, setToast] = useState(false);
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [toast, setToast] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const [loteId, setLoteId] = useState<number | null>(
-    selectedLoteForCost ?? data.lotes[0]?.id ?? null
-  );
+  const [loteId, setLoteId] = useState<string | null>(selectedLoteForCost);
   const ciclosDelLote = useMemo(
     () => loteId ? data.ciclos_productivos.filter((c) => c.lote_id === loteId) : [],
     [loteId, data.ciclos_productivos]
   );
-  const [cicloId, setCicloId] = useState<number | null>(
-    selectedCicloForCost ?? ciclosDelLote[ciclosDelLote.length - 1]?.id ?? null
-  );
+  const [cicloId, setCicloId] = useState<string | null>(selectedCicloForCost);
 
   useEffect(() => {
     if (selectedCicloForCost !== null) {
@@ -49,7 +46,19 @@ export default function RegistroCostos() {
     }
   }, [selectedLoteForCost]);
 
-  const handleLoteChange = (id: number) => {
+  useEffect(() => {
+    if (!loteId && data.lotes[0]) {
+      setLoteId(data.lotes[0].id);
+    }
+  }, [data.lotes, loteId]);
+
+  useEffect(() => {
+    if (!cicloId && ciclosDelLote.length > 0) {
+      setCicloId(ciclosDelLote[ciclosDelLote.length - 1].id);
+    }
+  }, [ciclosDelLote, cicloId]);
+
+  const handleLoteChange = (id: string) => {
     setLoteId(id);
     const ciclos = data.ciclos_productivos.filter((c) => c.lote_id === id);
     setCicloId(ciclos[ciclos.length - 1]?.id ?? null);
@@ -57,7 +66,7 @@ export default function RegistroCostos() {
     setSelectedCicloForCost(ciclos[ciclos.length - 1]?.id ?? null);
   };
 
-  const handleCicloChange = (id: number) => {
+  const handleCicloChange = (id: string) => {
     setCicloId(id);
     setSelectedCicloForCost(id);
   };
@@ -108,9 +117,9 @@ export default function RegistroCostos() {
     return records.sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [data, cicloId]);
 
-  const showToast = () => {
-    setToast(true);
-    setTimeout(() => setToast(false), 3000);
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 3000);
   };
 
   const resetInsumo = () => {
@@ -123,10 +132,12 @@ export default function RegistroCostos() {
     setActTipo(TIPOS_ACTIVIDAD[0]); setActDesc(''); setActOtros('');
   };
 
-  const handleGuardar = () => {
-    if (!cicloId) return;
+  const handleGuardar = async () => {
+    if (!cicloId || saving) return;
 
-    if (tab === 'insumo') {
+    try {
+      setSaving(true);
+      if (tab === 'insumo') {
       const e = {
         nombre: !insNombre.trim(),
         cantidad: insCantidad === '' || Number(insCantidad) <= 0,
@@ -134,11 +145,11 @@ export default function RegistroCostos() {
       };
       setInsErrors(e);
       if (Object.values(e).some(Boolean)) return;
-      const actId = insActividad ? Number(insActividad) : 0;
-      addInsumo({
+      const actId = insActividad || null;
+      await addInsumo({
         ciclo_id: cicloId,
         actividad_id: actId,
-        proveedor_id: Number(insProveedor) || data.proveedores[0]?.id || 0,
+        proveedor_id: insProveedor || null,
         fecha,
         nombre: insNombre.trim(),
         cantidad: Number(insCantidad),
@@ -153,8 +164,8 @@ export default function RegistroCostos() {
       };
       setJornErrors(e);
       if (Object.values(e).some(Boolean)) return;
-      const actId = jornActividad ? Number(jornActividad) : 0;
-      addManoDeObra({
+      const actId = jornActividad || null;
+      await addManoDeObra({
         ciclo_id: cicloId,
         actividad_id: actId,
         fecha,
@@ -169,7 +180,7 @@ export default function RegistroCostos() {
       };
       setActErrors(e);
       if (Object.values(e).some(Boolean)) return;
-      addActividad({
+      await addActividad({
         ciclo_id: cicloId,
         tipo: actTipo,
         fecha,
@@ -178,10 +189,28 @@ export default function RegistroCostos() {
       });
       resetActividad();
     }
-    showToast();
+      showToast('Registro guardado correctamente');
+    } catch (caughtError) {
+      showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo guardar el registro');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cicloActual = cicloId ? data.ciclos_productivos.find((c) => c.id === cicloId) : null;
+
+  if (loading) {
+    return <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">Cargando los registros…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm text-red-700">{error}</p>
+        <button onClick={() => void refresh()} className="mt-3 rounded-lg bg-[#2E7D32] px-4 py-2 text-sm font-semibold text-white">Reintentar</button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -197,7 +226,7 @@ export default function RegistroCostos() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Lote</label>
             <select
               value={loteId ?? ''}
-              onChange={(e) => handleLoteChange(Number(e.target.value))}
+              onChange={(e) => handleLoteChange(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
             >
               {data.lotes.map((l) => {
@@ -210,7 +239,7 @@ export default function RegistroCostos() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Ciclo productivo</label>
             <select
               value={cicloId ?? ''}
-              onChange={(e) => handleCicloChange(Number(e.target.value))}
+              onChange={(e) => handleCicloChange(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
             >
               {ciclosDelLote.length === 0 && <option value="">Sin ciclos</option>}
@@ -358,10 +387,10 @@ export default function RegistroCostos() {
 
           <button
             onClick={handleGuardar}
-            disabled={!cicloId}
+            disabled={!cicloId || saving}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4" /> Guardar registro
+            <Save className="w-4 h-4" /> {saving ? 'Guardando…' : 'Guardar registro'}
           </button>
         </div>
       </div>
@@ -410,7 +439,7 @@ export default function RegistroCostos() {
         <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50">
           <div className="flex items-center gap-2 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg">
             <CheckCircle2 className="w-5 h-5 text-green-400" />
-            <span className="text-sm font-medium">Registro guardado correctamente</span>
+            <span className="text-sm font-medium">{toast}</span>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -14,17 +14,45 @@ import { formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../ut
 const COLORS = ['#2E7D32', '#66BB6A', '#A5D6A7'];
 
 export default function Dashboard() {
-  const { data } = useApp();
-  const [selectedCicloId, setSelectedCicloId] = useState(1);
+  const { data, loading, error, refresh } = useApp();
+  const [selectedCicloId, setSelectedCicloId] = useState<string>('');
   const [precioEstimado, setPrecioEstimado] = useState('1150');
   const [showDetalles, setShowDetalles] = useState(false);
   const [showPronostico, setShowPronostico] = useState(false);
 
-  const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId)!;
-  const calc = useMemo(() => calcularCiclo(data, ciclo), [data, ciclo]);
-  const lote = getLote(data, ciclo.lote_id);
+  useEffect(() => {
+    if (!selectedCicloId && data.ciclos_productivos[0]) {
+      setSelectedCicloId(data.ciclos_productivos[0].id);
+    }
+  }, [data.ciclos_productivos, selectedCicloId]);
+
+  const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId) ?? data.ciclos_productivos[0];
+  const calc = useMemo(() => ciclo ? calcularCiclo(data, ciclo) : null, [data, ciclo]);
+  const lote = ciclo ? getLote(data, ciclo.lote_id) : undefined;
   const finca = lote ? getFinca(data, lote.finca_id) : undefined;
   const clima = finca ? data.clima.find((c) => c.finca_id === finca.id) : undefined;
+
+  if (loading) {
+    return <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">Cargando tus datosAgrícolas…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+        <p className="text-sm text-red-700">{error}</p>
+        <button onClick={() => void refresh()} className="mt-3 rounded-lg bg-[#2E7D32] px-4 py-2 text-sm font-semibold text-white">Reintentar</button>
+      </div>
+    );
+  }
+
+  if (!ciclo || !calc) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+        <h2 className="text-lg font-bold text-gray-900">Aún no tienes ciclos productivos</h2>
+        <p className="mt-2 text-sm text-gray-500">Crea una finca, un lote y un ciclo en “Mis Lotes” para ver tu resumen financiero.</p>
+      </div>
+    );
+  }
 
   const barData = data.ciclos_productivos.map((c) => {
     const cc = calcularCiclo(data, c);
@@ -37,9 +65,9 @@ export default function Dashboard() {
   });
 
   const pieData = [
-    { name: 'Insumos', value: calc.costoInsumos },
-    { name: 'Jornales', value: calc.costoJornales },
-    { name: 'Otros costos', value: calc.costoOtros },
+    { name: 'Insumos', value: calc?.costoInsumos ?? 0 },
+    { name: 'Jornales', value: calc?.costoJornales ?? 0 },
+    { name: 'Otros costos', value: calc?.costoOtros ?? 0 },
   ];
 
   const precioEst = Number(precioEstimado) || 0;
@@ -122,7 +150,7 @@ export default function Dashboard() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Ciclo productivo</label>
         <select
           value={selectedCicloId}
-          onChange={(e) => setSelectedCicloId(Number(e.target.value))}
+          onChange={(e) => setSelectedCicloId(e.target.value)}
           className="w-full md:max-w-md px-4 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:border-transparent"
         >
           {data.ciclos_productivos.map((c) => (
