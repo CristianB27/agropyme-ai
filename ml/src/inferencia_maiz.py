@@ -6,9 +6,13 @@ para aplicar el veto de despliegue acordado: no se usa para reconfigurar,
 comparar como criterio de selección ni cambiar el modelo final.
 
 La tabla de inferencia usa únicamente historia de entrenamiento (2007--2018).
-Cada predicción resume las observaciones históricas del grupo municipio,
-sistema y semestre. El rango es un intervalo central de 80 % construido con
-errores absolutos out-of-fold del modelo final.
+Cada valor resume las observaciones históricas del grupo municipio, sistema y
+semestre. El rango típico de error usa los percentiles 10 y 90 de los
+residuales out-of-fold 2014--2018 del modelo final; su cobertura real en la
+prueba 2019--2024 fue 60,5 %. La mejora del modelo sobre la línea base no se
+distingue del azar en la prueba (IC 95 % de la diferencia de MAE: -0,010 a
+0,028 t/ha), por lo que el valor se presenta como referencia histórica y no
+como predicción.
 """
 
 from __future__ import annotations
@@ -614,13 +618,23 @@ def construir_resumen(
             f'- Filas de la tabla de inferencia: **{filas_tabla}**, una por '
             'combinación real municipio-sistema-semestre con historia.',
             '',
-            '## Rango de inferencia',
+            '## Rango típico de error',
             '',
             (
-                f'El rango usa residuales out-of-fold del modelo final: '
-                f'q10={q10:.3f} y q90={q90:.3f} t/ha. Es una banda empírica '
-                'central objetivo del 80 %, no un intervalo paramétrico con '
-                'garantía de cobertura.'
+                'El rango típico de error (percentiles 10 y 90 de los '
+                'residuales out-of-fold 2014-2018) usa '
+                f'q10={q10:.3f} y q90={q90:.3f} t/ha. Su cobertura real en '
+                'la prueba 2019-2024 fue 60,5 %, por lo que no es un intervalo '
+                'central del 80 % ni una banda con garantía de cobertura.'
+            ),
+            '',
+            '## Interpretación del valor',
+            '',
+            (
+                'La mejora del modelo sobre la línea base no se distingue del '
+                'azar en la prueba: el IC 95 % de la diferencia de MAE fue '
+                '-0,010 a 0,028 t/ha. Por esta razón, el valor se presenta '
+                'como referencia histórica y no como predicción.'
             ),
             '',
             '## Limitaciones',

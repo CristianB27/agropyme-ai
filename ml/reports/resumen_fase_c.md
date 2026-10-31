@@ -37,9 +37,13 @@ El menor MAE de prueba fue 0.856 de HistGradientBoosting; no se adoptó porque l
 - Las medianas de la línea base se calculan dentro de cada fold; la imputación climática de los modelos también se ajusta dentro de cada fold.
 - Filas de la tabla de inferencia: **2831**, una por combinación real municipio-sistema-semestre con historia.
 
-## Rango de inferencia
+## Rango típico de error
 
-El rango usa residuales out-of-fold del modelo final: q10=-0.593 y q90=0.725 t/ha. Es una banda empírica central objetivo del 80 %, no un intervalo paramétrico con garantía de cobertura.
+El rango típico de error (percentiles 10 y 90 de los residuales out-of-fold 2014-2018) usa q10=-0.593 y q90=0.725 t/ha. Su cobertura real en la prueba 2019-2024 fue **60,5 %**, por lo que no es un intervalo central del 80 % ni una banda con garantía de cobertura.
+
+## Interpretación del valor
+
+La mejora del modelo sobre la línea base no se distingue del azar en la prueba: el IC 95 % de la diferencia de MAE fue **-0,010 a 0,028 t/ha**. Por esta razón, el valor se presenta como referencia histórica y no como predicción.
 
 ## Limitaciones
 

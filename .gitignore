@@ -23,6 +23,8 @@ dist-ssr
 .env
 
 data/
+!frontend/src/data/
+!frontend/src/data/rendimiento_esperado_maiz.json
 .venv/
 __pycache__/
 ml/models/*.pkl

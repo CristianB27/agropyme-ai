@@ -241,7 +241,7 @@ El corte temporal coincide con el cambio entre las bases EVA 2007-2018 y 2019-20
 | Random Forest | 11,154 | 0.877 | 1.533 | 39.09 |
 | Ridge | 11,154 | 0.945 | 1.550 | 46.77 |
 
-HistGradientBoosting mejora la línea base de forma leve: **-0.030 t/ha de MAE (-3.43%)**, **-0.040 t/ha de RMSE (-2.58%)** y **-0.20 puntos de MAPE**. Random Forest mejora MAE y RMSE, pero empeora el MAPE; Ridge no mejora la línea base.
+HistGradientBoosting mejora la línea base de forma leve: **-0.030 t/ha de MAE (-3.43%)**, **-0.040 t/ha de RMSE (-2.58%)** y **-0.20 puntos de MAPE**. Random Forest mejora MAE y RMSE, pero empeora el MAPE; Ridge no mejora la línea base. El bootstrap clusterizado por municipios no permite distinguir la mejora observada de Random Forest sobre la línea base del azar: el IC 95 % de la diferencia de MAE fue **-0,010 a 0,028 t/ha**.
 
 La ejecución escribe en `ml/reports/`:
 
@@ -271,9 +271,19 @@ Por el criterio congelado (MAE medio primero), **Random Forest queda como modelo
 
 La tabla `ml/reports/rendimiento_esperado_maiz.csv` contiene 2,831 combinaciones reales municipio-sistema-semestre para 1,065 municipios, con:
 
-- `rendimiento_esperado_t_ha`: predicción del modelo final sobre el perfil mediano histórico del grupo;
-- `rango_inferior_t_ha` y `rango_superior_t_ha`: banda empírica central objetivo del 80 %, obtenida con residuales q10/q90 out-of-fold del modelo final;
+- `rendimiento_esperado_t_ha`: valor de referencia histórica del modelo final sobre el perfil mediano histórico del grupo;
+- `rango_inferior_t_ha` y `rango_superior_t_ha`: rango típico de error (percentiles 10 y 90 de los residuales out-of-fold 2014-2018). Su cobertura real en la prueba 2019-2024 fue 60,5 %, no 80 %;
 - `cod_dep`, `cod_mun` y `departamento`: claves para evitar ambigüedad de nombres homónimos.
+
+La mejora del modelo sobre la línea base no se distingue del azar en la prueba: el IC 95 % de la diferencia de MAE fue -0,010 a 0,028 t/ha. Por ello, estos valores se presentan como referencia histórica y no como predicción.
+
+El JSON consumido por el frontend se genera de forma reproducible desde ese CSV:
+
+```powershell
+python ml/src/exportar_json_frontend.py
+```
+
+La salida `frontend/src/data/rendimiento_esperado_maiz.json` contiene 2,831 registros para 1,065 municipios únicos, expresados en kg/ha.
 
 La función pública recibe `(municipio, semestre, sistema)` y devuelve esperado, rango y modelo:
 
