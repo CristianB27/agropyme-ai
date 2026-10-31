@@ -114,6 +114,7 @@ export interface ClimaFinca {
   finca_id: EntityId;
   pronostico: PronosticoDia[];
   alerta: string | null;
+  error: string | null;
 }
 
 export type AppData = {

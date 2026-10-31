@@ -5,20 +5,124 @@ import {
 } from 'recharts';
 import {
   TrendingUp, DollarSign, Wheat, Scale, Percent, CloudRain, AlertTriangle,
-  Droplets, Thermometer, ShoppingCart, Package, Info, Calculator, ChevronDown,
+  Droplets, Thermometer, ShoppingCart, Package, Info, Calculator, ChevronDown, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import type { ClimaFinca, Finca } from '../types';
 import { calcularCiclo, cicloLabel, getLote, getFinca, getCultivo } from '../utils/calculos';
 import { formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../utils/format';
 
 const COLORS = ['#2E7D32', '#66BB6A', '#A5D6A7'];
 
+interface ClimaCardProps {
+  finca?: Finca;
+  clima?: ClimaFinca;
+  loading: boolean;
+  onRetry: () => void;
+}
+
+function ClimaCard({ finca, clima, loading, onRetry }: ClimaCardProps) {
+  const [showPronostico, setShowPronostico] = useState(false);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <CloudRain className="w-5 h-5 text-[#1565C0]" />
+        <h3 className="text-sm font-semibold text-gray-900">
+          Clima — {finca?.nombre ?? 'tus fincas'}
+        </h3>
+        {loading && clima && (
+          <RefreshCw className="ml-auto w-4 h-4 text-[#1565C0] animate-spin" aria-label="Actualizando pronóstico" />
+        )}
+      </div>
+
+      {!finca && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <CloudRain className="w-5 h-5 text-[#1565C0] flex-shrink-0" />
+          <p className="text-sm text-blue-800">Registra una finca para consultar su pronóstico.</p>
+        </div>
+      )}
+
+      {loading && !clima && finca && (
+        <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <RefreshCw className="w-4 h-4 text-[#1565C0] animate-spin" />
+          <p className="text-sm text-blue-800">Consultando el pronóstico de 5 días…</p>
+        </div>
+      )}
+
+      {clima?.error && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm text-red-800">No se pudo consultar el clima: {clima.error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 hover:underline focus:outline-none focus:ring-2 focus:ring-red-600 rounded"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Reintentar pronóstico
+            </button>
+          </div>
+        </div>
+      )}
+
+      {clima && !clima.error && clima.alerta && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-900">{clima.alerta}</p>
+        </div>
+      )}
+
+      {clima && !clima.error && !clima.alerta && (
+        <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+          <div className="w-2 h-2 rounded-full bg-green-500" />
+          <p className="text-sm text-green-800">Sin alertas climáticas</p>
+        </div>
+      )}
+
+      {clima && !clima.error && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowPronostico((value) => !value)}
+            aria-expanded={showPronostico}
+            className="flex items-center gap-1 text-xs font-medium text-[#1565C0] hover:underline min-h-[44px] py-2 focus:outline-none focus:ring-2 focus:ring-[#1565C0] focus:ring-offset-1 rounded px-1"
+          >
+            {showPronostico ? 'Ocultar pronóstico' : 'Ver pronóstico de 5 días'}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showPronostico ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showPronostico && (
+            <div className="grid grid-cols-5 gap-1.5 md:gap-3 mt-2">
+              {clima.pronostico.map((dia) => (
+                <div key={dia.dia} className="bg-gray-50 rounded-lg p-1.5 md:p-3 text-center">
+                  <p className="text-[9px] md:text-xs font-medium text-gray-500 mb-1">{dia.dia}</p>
+                  <div className="flex items-center justify-center gap-0.5 mb-1">
+                    <Thermometer className="w-3 h-3 text-gray-400" />
+                    <span className="text-[10px] md:text-xs font-semibold text-gray-900 tnum">{dia.temp_max}°</span>
+                    <span className="text-[9px] md:text-[10px] text-gray-400 tnum">/{dia.temp_min}°</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-0.5">
+                    <Droplets className="w-3 h-3 text-[#1565C0]" />
+                    <span className="text-[9px] md:text-[10px] font-medium text-[#1565C0] tnum">{dia.lluvia_mm} mm</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <p className="text-[10px] text-gray-400 mt-4 text-right">Datos meteorológicos: Open-Meteo.com</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { data, loading, error, refresh } = useApp();
+  const { data, loading, climaLoading, error, refresh, refreshClima } = useApp();
   const [selectedCicloId, setSelectedCicloId] = useState<string>('');
   const [precioEstimado, setPrecioEstimado] = useState('1150');
   const [showDetalles, setShowDetalles] = useState(false);
-  const [showPronostico, setShowPronostico] = useState(false);
 
   useEffect(() => {
     if (!selectedCicloId && data.ciclos_productivos[0]) {
@@ -29,7 +133,8 @@ export default function Dashboard() {
   const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId) ?? data.ciclos_productivos[0];
   const calc = useMemo(() => ciclo ? calcularCiclo(data, ciclo) : null, [data, ciclo]);
   const lote = ciclo ? getLote(data, ciclo.lote_id) : undefined;
-  const finca = lote ? getFinca(data, lote.finca_id) : undefined;
+  const cycleFinca = lote ? getFinca(data, lote.finca_id) : undefined;
+  const finca = cycleFinca ?? data.fincas[0];
   const clima = finca ? data.clima.find((c) => c.finca_id === finca.id) : undefined;
 
   if (loading) {
@@ -47,9 +152,21 @@ export default function Dashboard() {
 
   if (!ciclo || !calc) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
-        <h2 className="text-lg font-bold text-gray-900">Aún no tienes ciclos productivos</h2>
-        <p className="mt-2 text-sm text-gray-500">Crea una finca, un lote y un ciclo en “Mis Lotes” para ver tu resumen financiero.</p>
+      <div className="space-y-5 pb-24 md:pb-0">
+        <div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h2>
+          <p className="text-sm text-gray-500 mt-1">Resumen financiero de tus ciclos productivos</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+          <h3 className="text-lg font-bold text-gray-900">Aún no tienes ciclos productivos</h3>
+          <p className="mt-2 text-sm text-gray-500">Crea una finca, un lote y un ciclo en “Mis Lotes” para ver tu resumen financiero.</p>
+        </div>
+        <ClimaCard
+          finca={finca}
+          clima={clima}
+          loading={climaLoading}
+          onRetry={() => void refreshClima()}
+        />
       </div>
     );
   }
@@ -360,61 +477,12 @@ export default function Dashboard() {
       )}
 
       {/* Tarjeta de Clima */}
-      {clima && finca && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <CloudRain className="w-5 h-5 text-[#1565C0]" />
-            <h3 className="text-sm font-semibold text-gray-900">Clima — {finca.nombre}</h3>
-          </div>
-
-          {clima.alerta && (
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-900">{clima.alerta}</p>
-            </div>
-          )}
-
-          {!clima.alerta && (
-            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <p className="text-sm text-green-800">Sin alertas climáticas</p>
-            </div>
-          )}
-
-          {/* Pronóstico colapsable */}
-          <button
-            onClick={() => setShowPronostico((v) => !v)}
-            aria-expanded={showPronostico}
-            className="flex items-center gap-1 text-xs font-medium text-[#1565C0] hover:underline min-h-[44px] py-2 focus:outline-none focus:ring-2 focus:ring-[#1565C0] focus:ring-offset-1 rounded px-1"
-          >
-            {showPronostico ? 'Ocultar pronóstico' : 'Ver pronóstico de 5 días'}
-            <ChevronDown
-              className={`w-3.5 h-3.5 transition-transform duration-200 ${showPronostico ? 'rotate-180' : ''}`}
-            />
-          </button>
-
-          {showPronostico && (
-            <div className="grid grid-cols-5 gap-1.5 md:gap-3 mt-2">
-              {clima.pronostico.map((dia) => (
-                <div key={dia.dia} className="bg-gray-50 rounded-lg p-1.5 md:p-3 text-center">
-                  <p className="text-[9px] md:text-xs font-medium text-gray-500 mb-1">{dia.dia}</p>
-                  <div className="flex items-center justify-center gap-0.5 mb-1">
-                    <Thermometer className="w-3 h-3 text-gray-400" />
-                    <span className="text-[10px] md:text-xs font-semibold text-gray-900 tnum">{dia.temp_max}°</span>
-                    <span className="text-[9px] md:text-[10px] text-gray-400 tnum">/{dia.temp_min}°</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-0.5">
-                    <Droplets className="w-3 h-3 text-[#1565C0]" />
-                    <span className="text-[9px] md:text-xs font-medium text-[#1565C0] tnum">{dia.lluvia_mm} mm</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <p className="text-[10px] text-gray-400 mt-4 text-right">Datos meteorológicos: Open-Meteo.com</p>
-        </div>
-      )}
+      <ClimaCard
+        finca={finca}
+        clima={clima}
+        loading={climaLoading}
+        onRetry={() => void refreshClima()}
+      />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   type NuevoLote,
   type NuevaManoDeObra,
 } from '../services/agropyme';
+import { loadClimaForFincas } from '../services/clima';
 
 const EMPTY_DATA: AppData = {
   proveedores: [],
@@ -34,8 +35,10 @@ const EMPTY_DATA: AppData = {
 interface AppContextValue {
   data: AppData;
   loading: boolean;
+  climaLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  refreshClima: () => Promise<void>;
   addFinca: (finca: NuevaFinca) => Promise<Finca>;
   addLote: (lote: NuevoLote) => Promise<Lote>;
   addCiclo: (ciclo: NuevoCiclo) => Promise<CicloProductivo>;
@@ -53,20 +56,53 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
+  const [climaLoading, setClimaLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedLoteForCost, setSelectedLoteForCost] = useState<string | null>(null);
   const [selectedCicloForCost, setSelectedCicloForCost] = useState<string | null>(null);
 
+  const refreshClima = useCallback(async (fincas: Finca[]) => {
+    if (fincas.length === 0) {
+      setData((previous) => ({ ...previous, clima: [] }));
+      setClimaLoading(false);
+      return;
+    }
+
+    setClimaLoading(true);
+    try {
+      const clima = await loadClimaForFincas(fincas);
+      setData((previous) => {
+        const climaByFinca = new Map(previous.clima.map((item) => [item.finca_id, item]));
+        for (const item of clima) climaByFinca.set(item.finca_id, item);
+        return {
+          ...previous,
+          clima: fincas
+            .map((finca) => climaByFinca.get(finca.id))
+            .filter((item): item is NonNullable<typeof item> => item !== undefined),
+        };
+      });
+    } finally {
+      setClimaLoading(false);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       setError(null);
-      setData(await loadAppData());
+      const appData = await loadAppData();
+      setData(appData);
+      setLoading(false);
+      await refreshClima(appData.fincas);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'No se pudieron cargar los datos.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshClima]);
+
+  const refreshClimaForAll = useCallback(async () => {
+    await refreshClima(data.fincas);
+  }, [data.fincas, refreshClima]);
 
   useEffect(() => {
     void refresh();
@@ -75,6 +111,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addFinca = useCallback(async (finca: NuevaFinca) => {
     const created = await createFinca(finca);
     setData((previous) => ({ ...previous, fincas: [...previous.fincas, created] }));
+
+    void loadClimaForFincas([created]).then((clima) => {
+      setData((previous) => ({
+        ...previous,
+        clima: [
+          ...previous.clima.filter((item) => item.finca_id !== created.id),
+          ...clima,
+        ],
+      }));
+    });
+
     return created;
   }, []);
 
@@ -109,10 +156,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AppContextValue>(() => ({
-    data, loading, error, refresh, addFinca, addLote, addCiclo, addInsumo,
+    data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll, addFinca, addLote, addCiclo, addInsumo,
     addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost,
     setSelectedLoteForCost, setSelectedCicloForCost,
-  }), [data, loading, error, refresh, addFinca, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
+  }), [data, loading, climaLoading, error, refresh, refreshClimaForAll, addFinca, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
