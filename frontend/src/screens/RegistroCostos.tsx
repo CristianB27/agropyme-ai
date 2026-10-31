@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { CheckCircle2, Package, User, Wrench, Save } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { cicloLabel, getActividadesByCiclo, getCultivo, getLote } from '../utils/calculos';
+import { cicloLabel, getActividadesByCiclo } from '../utils/calculos';
 import { formatCOP, formatDate } from '../utils/format';
 
 type Tab = 'insumo' | 'jornal' | 'actividad';

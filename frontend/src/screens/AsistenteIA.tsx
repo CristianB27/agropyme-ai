@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, Leaf, Info } from 'lucide-react';
+import { Send, Leaf, Info } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'assistant';

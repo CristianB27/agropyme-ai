@@ -1,4 +1,5 @@
-import { LayoutDashboard, Map, Receipt, MessageCircle, Leaf } from 'lucide-react';
+import { LayoutDashboard, Map, Receipt, MessageCircle, Leaf, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export type ScreenId = 'dashboard' | 'lotes' | 'costos' | 'asistente';
 
@@ -16,6 +17,20 @@ interface LayoutProps {
 }
 
 export default function Layout({ current, onNavigate, children }: LayoutProps) {
+  const { user, signOut } = useAuth();
+  const displayName = String(user?.user_metadata.nombre ?? user?.email?.split('@')[0] ?? 'Productor');
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'AP';
+
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.replace('/login');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar - desktop */}
@@ -52,12 +67,21 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
         <div className="px-6 py-4 border-t border-gray-100">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-[#2E7D32]/10 flex items-center justify-center text-[#2E7D32] font-semibold text-sm">
-              CR
+              {initials}
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">Carlos Ramírez</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900 truncate">{displayName}</p>
               <p className="text-[10px] text-gray-500 truncate">Productor</p>
             </div>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -73,10 +97,10 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-[#2E7D32]/10 flex items-center justify-center text-[#2E7D32] font-semibold text-xs">
-              CR
+              {initials}
             </div>
             <div className="text-right">
-              <p className="text-xs font-semibold text-gray-900 leading-tight">Carlos Ramírez</p>
+              <p className="text-xs font-semibold text-gray-900 leading-tight">{displayName}</p>
               <p className="text-[9px] text-gray-500 leading-tight">Productor</p>
             </div>
           </div>
@@ -87,10 +111,10 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
       <main className="md:ml-64 pb-20 md:pb-8 min-h-screen">
         <div className="hidden md:flex items-center gap-2.5 px-8 py-4 border-b border-gray-100 bg-white">
           <div className="w-9 h-9 rounded-full bg-[#2E7D32]/10 flex items-center justify-center text-[#2E7D32] font-semibold text-sm">
-            CR
+            {initials}
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900">Carlos Ramírez</p>
+            <p className="text-sm font-semibold text-gray-900">{displayName}</p>
             <p className="text-xs text-gray-500">Productor</p>
           </div>
         </div>
