@@ -117,26 +117,32 @@ Las tablas privadas aplican RLS, por lo que cada consulta queda limitada a `auth
 
 ### Cálculo del resumen
 
-`summary.ts` consolida los registros por ciclo con las mismas definiciones usadas por el frontend en `frontend/src/utils/calculos.ts`:
+`summary.ts` consolida los registros por ciclo con las mismas definiciones usadas por el frontend en `frontend/src/utils/calculos.ts`. La suite Deno compara ambas implementaciones con los mismos datos para impedir que sus fórmulas diverjan.
 
-- costo de insumos: `suma(cantidad × costo_unitario)`;
-- costo de jornales: `suma(num_jornales × valor_jornal)`;
-- otros costos: `suma(actividad.otros_costos)`;
-- costo total `C`: `costo de insumos + costo de jornales + otros costos`;
-- producción `Q`, ventas `Qv` y pendiente `Qnv`: cantidades en `cantidad_kg`;
-- ingresos realizados: `suma(cantidad_kg × precio_unitario)`;
+Para cada ciclo se usan estas magnitudes:
+
+- `Q`: total cosechado en kg;
+- `Qv`: total vendido en kg;
+- `Qnv = Q − Qv`: cosecha pendiente de venta en kg;
+- `C = costo de insumos + costo de jornales + otros costos`: costo total;
+- `Ir = suma(cantidad_kg × precio_unitario)`: ingresos realizados.
+
+Los indicadores se calculan así:
+
 - costo unitario: `C / Q`;
 - costo de lo vendido: `(C / Q) × Qv`;
-- margen realizado: `ingresos realizados − costo de lo vendido`;
-- margen sobre ventas: `margen realizado / ingresos realizados`;
+- margen realizado: `Ir − costo de lo vendido`;
+- margen sobre ventas: `margen realizado / Ir`;
 - rentabilidad sobre costos: `margen realizado / costo de lo vendido`;
-- resultado proyectado: `ingresos realizados + Qnv × precio estimado − costo total`. Este valor es siempre una **estimación** y no un resultado realizado.
+- resultado proyectado del ciclo: `Ir + Qnv × precio estimado − C`.
 
-La rentabilidad usa el costo de lo vendido como denominador, no el costo total. Así, una cosecha parcialmente vendida no imputa a las ventas la totalidad de los costos de producción.
+El resultado proyectado usa el precio estimado que edita el usuario. Siempre se presenta separado de lo realizado y rotulado **Estimación**; no es una utilidad realizada. La rentabilidad usa el costo de lo vendido como denominador, no `C`, para no imputar a las ventas la totalidad de los costos de producción.
 
-El ciclo de regresión de maíz en Lote Norte valida el Paso 4: `C = $8.856.000`, `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e ingresos realizados de `$11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
+Mientras `Qnv > 0`, los indicadores que dependen de lo vendido se rotulan **parcial**. Si `Q = 0`, `Qv = 0` o `Ir = 0`, cada indicador dependiente de esa base se muestra como **no disponible** (`null` internamente). Las implementaciones nunca dividen por cero.
 
-Si no hay producción, el costo unitario y el costo de lo vendido son `null`; si no existe una base válida, el indicador porcentual correspondiente también es `null`.
+El cálculo rechaza áreas, cantidades o precios no positivos y rechaza ventas cuya suma `Qv` supere `Q`. PostgreSQL mantiene además las restricciones `cantidad > 0` y `precio_unitario > 0`, y los triggers diferibles `ventas_no_superan_cosecha` y `cosechas_no_superan_ventas` preservan la invariante en cada ciclo.
+
+El ciclo de regresión de maíz en Lote Norte, de 2,5 ha, valida estas fórmulas: insumos `$3.466.000`, jornales `$3.390.000`, otros costos `$2.000.000` y `C = $8.856.000`; `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e `Ir = $11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. El costo por hectárea es `$3.542.400` y el rendimiento es `4.500 kg/ha`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
 
 ### Anthropic y fallback
 

@@ -11,7 +11,7 @@ El repositorio contiene dos componentes relacionados:
 
 - Persistencia en Supabase con UUID, relaciones compuestas y RLS por `auth.uid()`.
 - Conversión automática de cosechas y ventas a kg mediante el factor de la unidad.
-- Indicadores financieros alineados entre Dashboard y Asistente IA: margen realizado sobre el costo de lo vendido, rentabilidad sobre costos, margen sobre ventas y resultado proyectado rotulado como estimación.
+- Indicadores financieros alineados entre Dashboard y Asistente IA, con `Q` (cosechado), `Qv` (vendido), `Qnv = Q - Qv` e ingresos realizados `Ir`: costo unitario `C/Q`, costo de lo vendido `(C/Q) × Qv`, margen realizado `Ir - costo de lo vendido`, margen sobre ventas `margen realizado/Ir` y rentabilidad sobre costos `margen realizado/costo de lo vendido`. El resultado proyectado `Ir + Qnv × precio estimado - C` se muestra separado y siempre como estimación.
 - Pronóstico real de cinco días por finca con Open-Meteo, caché en el navegador y alerta de lluvia.
 - AsistenteIA conectado a una Supabase Edge Function. Consulta los datos del usuario aplicando RLS, usa Anthropic cuando hay clave configurada y responde con un fallback determinístico calculado sobre los mismos datos reales cuando no la hay o Anthropic falla.
 - La función `asistente` está publicada en el proyecto enlazado con `verify_jwt = true`.
@@ -85,6 +85,14 @@ Publica o actualiza la función sin requerir Docker:
 ```
 
 Sin `ANTHROPIC_API_KEY`, o si Anthropic no responde, la misma función devuelve `source: "fallback"` con cálculos sobre los datos reales del usuario. El chat identifica esa respuesta como determinística y muestra el aviso de fallback. Nunca usa datos simulados para una sesión autenticada.
+
+### Cálculo financiero e indicadores parciales
+
+El costo total `C` de un ciclo es la suma de insumos, jornales y otros costos. Sobre `Q` kg cosechados y `Qv` kg vendidos, con `Qnv = Q - Qv`, el costo unitario es `C/Q`, el costo de lo vendido es `(C/Q) × Qv`, el margen realizado es `Ir - costo de lo vendido`, el margen sobre ventas es `margen realizado/Ir` y la rentabilidad sobre costos es `margen realizado/costo de lo vendido`.
+
+Si queda cosecha sin vender (`Qnv > 0`), los indicadores realizados se rotulan **parcial**. Si no hay cosecha, ventas o ingresos, los indicadores dependientes se muestran como **no disponible** y nunca se realiza una división por cero. El cálculo rechaza cantidades, precios y área no positivos, así como ventas superiores a la cosecha. El Dashboard y el asistente usan las mismas fórmulas; la suite Deno verifica además su paridad exacta.
+
+El resultado proyectado del ciclo se calcula como `Ir + Qnv × precio estimado - C`. El usuario edita el precio estimado y el valor se presenta separado de lo realizado, siempre rotulado **Estimación**.
 
 ### Validación
 

@@ -1,5 +1,13 @@
 import { deterministicAnswer } from "./fallback.ts";
-import { buildDataSummary, calcularResultadoProyectado } from "./summary.ts";
+import {
+  buildDataSummary,
+  calcularIndicadoresCiclo,
+  calcularResultadoProyectado as calcularResultadoProyectadoEdge,
+} from "./summary.ts";
+import {
+  calcularIndicadoresCiclo as calcularIndicadoresFrontend,
+  calcularResultadoProyectado as calcularResultadoProyectadoFrontend,
+} from "../../../frontend/src/utils/calculos.ts";
 import type { UserData } from "./types.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -24,6 +32,24 @@ function assertAlmostEquals(
       `${message}: esperado ${String(expected)}, obtenido ${String(actual)}`,
     );
   }
+}
+
+function assertThrows(
+  action: () => unknown,
+  expectedMessage: string,
+): void {
+  try {
+    action();
+  } catch (caughtError) {
+    if (
+      caughtError instanceof Error &&
+      caughtError.message.includes(expectedMessage)
+    ) {
+      return;
+    }
+    throw caughtError;
+  }
+  throw new Error(`Se esperaba el error: ${expectedMessage}`);
 }
 
 const userData: UserData = {
@@ -171,7 +197,7 @@ const ejemploUserData: UserData = {
     id: "lote-norte",
     finca_id: "finca-ejemplo",
     nombre: "Lote Norte",
-    area_ha: 2,
+    area_ha: 2.5,
   }],
   ciclos: [{
     id: "ciclo-maiz",
@@ -188,7 +214,7 @@ const ejemploUserData: UserData = {
     tipo: "Siembra",
     fecha: "2026-01-02",
     descripcion: "Siembra de maíz",
-    otros_costos: 1_356_000,
+    otros_costos: 2_000_000,
   }],
   insumos: [{
     id: "insumo-ciclo",
@@ -197,14 +223,14 @@ const ejemploUserData: UserData = {
     fecha: "2026-01-02",
     nombre: "Insumos del ciclo",
     cantidad: 1,
-    costo_unitario: 6_000_000,
+    costo_unitario: 3_466_000,
   }],
   manoDeObra: [{
     id: "jornal-ciclo",
     ciclo_id: "ciclo-maiz",
     actividad_id: "actividad-siembra",
     fecha: "2026-01-03",
-    num_jornales: 10,
+    num_jornales: 22.6,
     valor_jornal: 150_000,
   }],
   cosechas: [{
@@ -218,7 +244,7 @@ const ejemploUserData: UserData = {
       id: "venta-ciclo-1",
       ciclo_id: "ciclo-maiz",
       fecha: "2026-06-02",
-      cantidad_kg: 9_000,
+      cantidad_kg: 4_000,
       precio_unitario: 1_100,
       comprador: "Mercado A",
     },
@@ -226,9 +252,17 @@ const ejemploUserData: UserData = {
       id: "venta-ciclo-2",
       ciclo_id: "ciclo-maiz",
       fecha: "2026-06-03",
-      cantidad_kg: 1_500,
-      precio_unitario: 1_250,
+      cantidad_kg: 2_000,
+      precio_unitario: 1_100,
       comprador: "Mercado B",
+    },
+    {
+      id: "venta-ciclo-3",
+      ciclo_id: "ciclo-maiz",
+      fecha: "2026-06-04",
+      cantidad_kg: 4_500,
+      precio_unitario: 1_150,
+      comprador: "Mercado C",
     },
   ],
 };
@@ -284,7 +318,18 @@ Deno.test("el ciclo de ejemplo aplica el Paso 4 y proyecta el resultado estimado
   const cycle = summary.ciclos[0];
 
   assert(cycle, "Debe resumir el ciclo de maíz de Lote Norte.");
+  assertEquals(cycle.costoInsumos, 3_466_000, "Costo de insumos del ejemplo");
+  assertEquals(cycle.costoJornales, 3_390_000, "Costo de jornales del ejemplo");
+  assertEquals(cycle.costoOtros, 2_000_000, "Otros costos del ejemplo");
   assertEquals(cycle.costoTotal, 8_856_000, "Costo total del ciclo de ejemplo");
+  assertEquals(
+    cycle.costoPorHectarea,
+    3_542_400,
+    "Costo por hectárea del ejemplo",
+  );
+  assertEquals(cycle.Q, 11_250, "Q del ciclo de ejemplo");
+  assertEquals(cycle.Qv, 10_500, "Qv del ciclo de ejemplo");
+  assertEquals(cycle.Qnv, 750, "Qnv del ciclo de ejemplo");
   assertEquals(cycle.produccionKg, 11_250, "Producción del ciclo de ejemplo");
   assertEquals(cycle.vendidoKg, 10_500, "Vendido del ciclo de ejemplo");
   assertEquals(cycle.pendienteKg, 750, "Pendiente del ciclo de ejemplo");
@@ -318,8 +363,10 @@ Deno.test("el ciclo de ejemplo aplica el Paso 4 y proyecta el resultado estimado
     0.424578977933,
     "Rentabilidad sobre costos del ciclo de ejemplo",
   );
+  assertEquals(cycle.rendimiento, 4_500, "Rendimiento del ciclo de ejemplo");
+  assert(cycle.esParcial, "El ciclo de ejemplo debe ser parcial.");
   assertEquals(
-    calcularResultadoProyectado(cycle, 1_150),
+    calcularResultadoProyectadoEdge(cycle, 1_150),
     3_781_500,
     "Resultado proyectado del ciclo de ejemplo",
   );
@@ -346,6 +393,157 @@ Deno.test("el ciclo de ejemplo aplica el Paso 4 y proyecta el resultado estimado
     answer.includes("29,8 %"),
     "El fallback debe mostrar el margen sobre ventas del 29,8 %.",
   );
+  assert(
+    answer.includes("son parciales"),
+    "El fallback debe avisar que los indicadores realizados son parciales.",
+  );
+});
+
+Deno.test("el frontend y la Edge Function producen los mismos indicadores", () => {
+  const entradas = {
+    areaHa: 2.5,
+    costoInsumos: 3_466_000,
+    costoJornales: 3_390_000,
+    costoOtros: 2_000_000,
+    cosechas: [{ cantidadKg: 11_250 }],
+    ventas: [
+      { cantidadKg: 4_000, precioUnitario: 1_100 },
+      { cantidadKg: 2_000, precioUnitario: 1_100 },
+      { cantidadKg: 4_500, precioUnitario: 1_150 },
+    ],
+  };
+  const frontend = calcularIndicadoresFrontend(entradas);
+  const edge = calcularIndicadoresCiclo(entradas);
+
+  assertEquals(
+    JSON.stringify(edge),
+    JSON.stringify(frontend),
+    "Los indicadores frontend y Edge deben ser idénticos",
+  );
+  assertEquals(
+    calcularResultadoProyectadoEdge(edge, 1_150),
+    calcularResultadoProyectadoFrontend(frontend, 1_150),
+    "El resultado proyectado frontend y Edge debe ser idéntico",
+  );
+});
+
+Deno.test("los indicadores no disponibles no producen divisiones por cero", () => {
+  const sinCosecha = calcularIndicadoresCiclo({
+    areaHa: 2.5,
+    costoInsumos: 1_000_000,
+    costoJornales: 500_000,
+    costoOtros: 0,
+    cosechas: [],
+    ventas: [],
+  });
+  assertEquals(sinCosecha.Q, 0, "Q sin cosecha");
+  assertEquals(sinCosecha.Qv, 0, "Qv sin cosecha");
+  assertEquals(sinCosecha.Qnv, 0, "Qnv sin cosecha");
+  assertEquals(sinCosecha.costoUnitario, null, "Costo unitario sin cosecha");
+  assertEquals(
+    sinCosecha.costoDeLoVendido,
+    null,
+    "Costo de lo vendido sin cosecha",
+  );
+  assertEquals(sinCosecha.margenRealizado, null, "Margen sin cosecha");
+  assertEquals(
+    sinCosecha.margenSobreVentas,
+    null,
+    "Margen sobre ventas sin cosecha",
+  );
+  assertEquals(
+    sinCosecha.rentabilidadSobreCostos,
+    null,
+    "Rentabilidad sin cosecha",
+  );
+  assertEquals(sinCosecha.rendimiento, null, "Rendimiento sin cosecha");
+  assertEquals(
+    sinCosecha.esParcial,
+    false,
+    "Sin cosecha no hay estado parcial",
+  );
+
+  const sinVentas = calcularIndicadoresCiclo({
+    areaHa: 2.5,
+    costoInsumos: 1_000_000,
+    costoJornales: 500_000,
+    costoOtros: 0,
+    cosechas: [{ cantidadKg: 11_250 }],
+    ventas: [],
+  });
+  assertEquals(sinVentas.Qv, 0, "Qv sin ventas");
+  assertEquals(sinVentas.Qnv, 11_250, "Qnv sin ventas");
+  assertEquals(
+    sinVentas.costoDeLoVendido,
+    null,
+    "Costo de lo vendido sin ventas",
+  );
+  assertEquals(sinVentas.margenRealizado, null, "Margen sin ventas");
+  assertEquals(
+    sinVentas.margenSobreVentas,
+    null,
+    "Margen sobre ventas sin ventas",
+  );
+  assertEquals(
+    sinVentas.rentabilidadSobreCostos,
+    null,
+    "Rentabilidad sin ventas",
+  );
+});
+
+Deno.test("se rechazan ventas superiores a la cosecha y valores no positivos", () => {
+  assertThrows(
+    () =>
+      calcularIndicadoresCiclo({
+        areaHa: 2.5,
+        costoInsumos: 1_000_000,
+        costoJornales: 500_000,
+        costoOtros: 0,
+        cosechas: [{ cantidadKg: 1_000 }],
+        ventas: [{ cantidadKg: 1_001, precioUnitario: 1_100 }],
+      }),
+    "Las ventas no pueden superar la cosecha del ciclo.",
+  );
+  assertThrows(
+    () =>
+      calcularIndicadoresCiclo({
+        areaHa: 2.5,
+        costoInsumos: 1_000_000,
+        costoJornales: 500_000,
+        costoOtros: 0,
+        cosechas: [{ cantidadKg: 0 }],
+        ventas: [],
+      }),
+    "La cantidad cosechada debe ser mayor que cero.",
+  );
+  assertThrows(
+    () =>
+      calcularIndicadoresCiclo({
+        areaHa: 2.5,
+        costoInsumos: 1_000_000,
+        costoJornales: 500_000,
+        costoOtros: 0,
+        cosechas: [{ cantidadKg: 1_000 }],
+        ventas: [{ cantidadKg: 500, precioUnitario: 0 }],
+      }),
+    "El precio de venta debe ser mayor que cero.",
+  );
+});
+
+Deno.test("un ciclo totalmente vendido no se rotula como parcial", () => {
+  const cycle = calcularIndicadoresCiclo({
+    areaHa: 2.5,
+    costoInsumos: 1_000_000,
+    costoJornales: 500_000,
+    costoOtros: 0,
+    cosechas: [{ cantidadKg: 11_250 }],
+    ventas: [{ cantidadKg: 11_250, precioUnitario: 1_100 }],
+  });
+
+  assertEquals(cycle.Q, 11_250, "Q totalmente vendido");
+  assertEquals(cycle.Qv, 11_250, "Qv totalmente vendido");
+  assertEquals(cycle.Qnv, 0, "Qnv totalmente vendido");
+  assertEquals(cycle.esParcial, false, "No debe ser parcial");
 });
 
 Deno.test("el fallback responde con el ciclo mencionado y sus datos consolidados", () => {

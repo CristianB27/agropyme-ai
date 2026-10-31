@@ -5,15 +5,126 @@ import type {
   UserData,
 } from "./types.ts";
 
+export interface EntradasCalculoCiclo {
+  areaHa: number;
+  costoInsumos: number;
+  costoJornales: number;
+  costoOtros: number;
+  cosechas: Array<{ cantidadKg: number }>;
+  ventas: Array<{ cantidadKg: number; precioUnitario: number }>;
+}
+
+export interface IndicadoresCiclo {
+  costoTotal: number;
+  costoPorHectarea: number;
+  Q: number;
+  Qv: number;
+  Qnv: number;
+  costoUnitario: number | null;
+  costoDeLoVendido: number | null;
+  ingresosRealizados: number;
+  margenRealizado: number | null;
+  rentabilidadSobreCostos: number | null;
+  margenSobreVentas: number | null;
+  rendimiento: number | null;
+  esParcial: boolean;
+}
+
+function assertValorValido(valor: number, nombre: string): void {
+  if (!Number.isFinite(valor) || valor <= 0) {
+    throw new Error(`${nombre} debe ser mayor que cero.`);
+  }
+}
+
+export function validarDatosCiclo(entradas: EntradasCalculoCiclo): void {
+  assertValorValido(entradas.areaHa, "El área del lote");
+  entradas.cosechas.forEach((cosecha) =>
+    assertValorValido(cosecha.cantidadKg, "La cantidad cosechada")
+  );
+  entradas.ventas.forEach((venta) => {
+    assertValorValido(venta.cantidadKg, "La cantidad vendida");
+    assertValorValido(venta.precioUnitario, "El precio de venta");
+  });
+
+  const Q = entradas.cosechas.reduce(
+    (sum, cosecha) => sum + cosecha.cantidadKg,
+    0,
+  );
+  const Qv = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg,
+    0,
+  );
+  if (Qv > Q) {
+    throw new Error("Las ventas no pueden superar la cosecha del ciclo.");
+  }
+}
+
+export function calcularIndicadoresCiclo(
+  entradas: EntradasCalculoCiclo,
+): IndicadoresCiclo {
+  validarDatosCiclo(entradas);
+
+  const costoTotal = entradas.costoInsumos +
+    entradas.costoJornales + entradas.costoOtros;
+  const Q = entradas.cosechas.reduce(
+    (sum, cosecha) => sum + cosecha.cantidadKg,
+    0,
+  );
+  const Qv = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg,
+    0,
+  );
+  const Qnv = Q - Qv;
+  const ingresosRealizados = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg * venta.precioUnitario,
+    0,
+  );
+
+  const costoUnitario = Q > 0 ? costoTotal / Q : null;
+  const costoDeLoVendido = Qv > 0 && costoUnitario !== null
+    ? costoUnitario * Qv
+    : null;
+  const margenRealizado = Qv > 0 && ingresosRealizados > 0 &&
+      costoDeLoVendido !== null
+    ? ingresosRealizados - costoDeLoVendido
+    : null;
+  const rentabilidadSobreCostos = margenRealizado !== null &&
+      costoDeLoVendido !== null && costoDeLoVendido > 0
+    ? margenRealizado / costoDeLoVendido
+    : null;
+  const margenSobreVentas = ingresosRealizados > 0 && margenRealizado !== null
+    ? margenRealizado / ingresosRealizados
+    : null;
+
+  return {
+    costoTotal,
+    costoPorHectarea: entradas.areaHa > 0 ? costoTotal / entradas.areaHa : 0,
+    Q,
+    Qv,
+    Qnv,
+    costoUnitario,
+    costoDeLoVendido,
+    ingresosRealizados,
+    margenRealizado,
+    rentabilidadSobreCostos,
+    margenSobreVentas,
+    rendimiento: Q > 0 ? Q / entradas.areaHa : null,
+    esParcial: Qnv > 0,
+  };
+}
+
 export function calcularResultadoProyectado(
   ciclo: Pick<
-    CycleSummary,
-    "ingresosRealizados" | "pendienteKg" | "costoTotal"
+    IndicadoresCiclo,
+    "ingresosRealizados" | "Qnv" | "costoTotal"
   >,
   precioUnitarioEstimado: number,
-): number {
+): number | null {
+  if (!Number.isFinite(precioUnitarioEstimado) || precioUnitarioEstimado <= 0) {
+    return null;
+  }
   return ciclo.ingresosRealizados +
-    ciclo.pendienteKg * precioUnitarioEstimado - ciclo.costoTotal;
+    ciclo.Qnv * precioUnitarioEstimado - ciclo.costoTotal;
 }
 
 export function buildDataSummary(
@@ -62,27 +173,19 @@ export function buildDataSummary(
       (total, actividad) => total + actividad.otros_costos,
       0,
     );
-    const costoTotal = costoInsumos + costoJornales + costoOtros;
-    const produccionKg = cosechas.reduce(
-      (total, cosecha) => total + cosecha.cantidad_kg,
-      0,
-    );
-    const vendidoKg = ventas.reduce(
-      (total, venta) => total + venta.cantidad_kg,
-      0,
-    );
-    const pendienteKg = produccionKg - vendidoKg;
-    const ingresosRealizados = ventas.reduce(
-      (total, venta) => total + venta.cantidad_kg * venta.precio_unitario,
-      0,
-    );
-    const costoUnitario = produccionKg > 0 ? costoTotal / produccionKg : null;
-    const costoDeLoVendido = costoUnitario !== null
-      ? costoUnitario * vendidoKg
-      : null;
-    const margenRealizado = costoDeLoVendido !== null
-      ? ingresosRealizados - costoDeLoVendido
-      : null;
+    const indicadores = calcularIndicadoresCiclo({
+      areaHa,
+      costoInsumos,
+      costoJornales,
+      costoOtros,
+      cosechas: cosechas.map((cosecha) => ({
+        cantidadKg: cosecha.cantidad_kg,
+      })),
+      ventas: ventas.map((venta) => ({
+        cantidadKg: venta.cantidad_kg,
+        precioUnitario: venta.precio_unitario,
+      })),
+    });
     const jornales = manoDeObra.reduce(
       (total, registro) => total + registro.num_jornales,
       0,
@@ -113,24 +216,23 @@ export function buildDataSummary(
       costoInsumos,
       costoJornales,
       costoOtros,
-      costoTotal,
-      costoPorHectarea: areaHa > 0 ? costoTotal / areaHa : 0,
-      costoUnitario,
-      produccionKg,
-      vendidoKg,
-      pendienteKg,
-      ingresosRealizados,
-      costoDeLoVendido,
-      margenRealizado,
-      rentabilidadSobreCostos: costoDeLoVendido !== null &&
-          costoDeLoVendido > 0
-        ? margenRealizado !== null ? margenRealizado / costoDeLoVendido : null
-        : null,
-      margenSobreVentas: ingresosRealizados > 0 && margenRealizado !== null
-        ? margenRealizado / ingresosRealizados
-        : null,
+      costoTotal: indicadores.costoTotal,
+      costoPorHectarea: indicadores.costoPorHectarea,
+      costoUnitario: indicadores.costoUnitario,
+      Q: indicadores.Q,
+      Qv: indicadores.Qv,
+      Qnv: indicadores.Qnv,
+      produccionKg: indicadores.Q,
+      vendidoKg: indicadores.Qv,
+      pendienteKg: indicadores.Qnv,
+      ingresosRealizados: indicadores.ingresosRealizados,
+      costoDeLoVendido: indicadores.costoDeLoVendido,
+      margenRealizado: indicadores.margenRealizado,
+      rentabilidadSobreCostos: indicadores.rentabilidadSobreCostos,
+      margenSobreVentas: indicadores.margenSobreVentas,
+      rendimiento: indicadores.rendimiento,
       jornales,
-      esParcial: pendienteKg > 0,
+      esParcial: indicadores.esParcial,
       insumos: insumos.map((insumo) => ({
         nombre: insumo.nombre,
         cantidad: insumo.cantidad,

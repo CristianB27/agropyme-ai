@@ -194,9 +194,14 @@ export default function Dashboard() {
     { name: 'Otros costos', value: calc?.costoOtros ?? 0 },
   ];
 
-  const precioEst = Number(precioEstimado) || 0;
-  const ingresoEstimadoPorVender = calc.Qnv * precioEst;
-  const ingresoTotalProyectado = calc.ingresosRealizados + ingresoEstimadoPorVender;
+  const precioEst = Number(precioEstimado);
+  const precioEstimadoValido = Number.isFinite(precioEst) && precioEst > 0;
+  const ingresoEstimadoPorVender = precioEstimadoValido
+    ? calc.Qnv * precioEst
+    : null;
+  const ingresoTotalProyectado = precioEstimadoValido
+    ? calc.ingresosRealizados + calc.Qnv * precioEst
+    : null;
   const resultadoProyectado = calcularResultadoProyectado(calc, precioEst);
 
   const primaryCards = [
@@ -215,7 +220,7 @@ export default function Dashboard() {
       parcial: calc.esParcial,
     },
     {
-      label: 'Rentabilidad sobre costo de lo vendido',
+      label: 'Rentabilidad sobre costos',
       value: calc.rentabilidadSobreCostos !== null ? formatPercent(calc.rentabilidadSobreCostos * 100) : 'No disponible',
       icon: Percent,
       color: '#7B1FA2',
@@ -320,7 +325,7 @@ export default function Dashboard() {
                   <Icon className="w-4 h-4" style={{ color: ind.color }} />
                 </div>
                 {ind.parcial && (
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Parcial</span>
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">parcial</span>
                 )}
               </div>
               <p className="text-xs text-gray-500 mb-1">{ind.label}</p>
@@ -336,7 +341,7 @@ export default function Dashboard() {
               <Package className="w-4 h-4" style={{ color: '#5D4037' }} />
             </div>
             {calc.esParcial && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Parcial</span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">parcial</span>
             )}
           </div>
           <p className="text-xs text-gray-500 mb-1">Sin vender</p>
@@ -377,7 +382,7 @@ export default function Dashboard() {
                       <Icon className="w-4 h-4" style={{ color: ind.color }} />
                     </div>
                     {ind.parcial && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">Parcial</span>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">parcial</span>
                     )}
                   </div>
                   <p className="text-xs text-gray-500 mb-1">{ind.label}</p>
@@ -392,7 +397,7 @@ export default function Dashboard() {
             <div className="flex items-start gap-2">
               <Info className="w-4 h-4 text-[#2E7D32] flex-shrink-0 mt-0.5" />
               <p className="text-xs text-gray-700 leading-relaxed">
-                <strong>Rentabilidad sobre costo de lo vendido</strong> mide el margen realizado por cada peso de costo vendido. <strong>Margen sobre ventas</strong> mide el margen realizado por cada peso de ingreso. Son medidas distintas y no deben confundirse.
+                <strong>Rentabilidad sobre costos</strong> mide el margen realizado por cada peso del costo de lo vendido. <strong>Margen sobre ventas</strong> mide el margen realizado por cada peso de ingreso. Son medidas distintas y no deben confundirse.
               </p>
             </div>
           </div>
@@ -481,15 +486,15 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] text-gray-500 mb-0.5">Ingreso estimado por venta pendiente</p>
-                  <p className="text-sm font-bold text-[#1565C0] tnum">{formatCOP(ingresoEstimadoPorVender)}</p>
+                  <p className="text-sm font-bold text-[#1565C0] tnum">{ingresoEstimadoPorVender !== null ? formatCOP(ingresoEstimadoPorVender) : 'No disponible'}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] text-gray-500 mb-0.5">Ingreso total proyectado (estimación)</p>
-                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(ingresoTotalProyectado)}</p>
+                  <p className="text-sm font-bold text-gray-900 tnum">{ingresoTotalProyectado !== null ? formatCOP(ingresoTotalProyectado) : 'No disponible'}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] text-gray-500 mb-0.5">Resultado proyectado (estimación)</p>
-                  <p className="text-sm font-bold text-gray-900 tnum">{formatCOP(resultadoProyectado)}</p>
+                  <p className="text-sm font-bold text-gray-900 tnum">{resultadoProyectado !== null ? formatCOP(resultadoProyectado) : 'No disponible'}</p>
                 </div>
               </div>
             </div>

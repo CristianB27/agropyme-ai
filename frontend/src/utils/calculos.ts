@@ -12,25 +12,37 @@ import type {
   Venta,
 } from '../types.ts';
 
-export interface CicloCalculo {
+export interface EntradasCalculoCiclo {
+  areaHa: number;
   costoInsumos: number;
   costoJornales: number;
   costoOtros: number;
+  cosechas: Array<{ cantidadKg: number }>;
+  ventas: Array<{ cantidadKg: number; precioUnitario: number }>;
+}
+
+export interface IndicadoresCiclo {
   costoTotal: number;
-  areaHa: number;
   costoPorHectarea: number;
   Q: number;
   Qv: number;
   Qnv: number;
   costoUnitario: number | null;
   costoDeLoVendido: number | null;
-  rendimiento: number | null;
   ingresosRealizados: number;
   margenRealizado: number | null;
   rentabilidadSobreCostos: number | null;
   margenSobreVentas: number | null;
-  unidad: string;
+  rendimiento: number | null;
   esParcial: boolean;
+}
+
+export interface CicloCalculo extends IndicadoresCiclo {
+  costoInsumos: number;
+  costoJornales: number;
+  costoOtros: number;
+  areaHa: number;
+  unidad: string;
 }
 
 export function getLote(data: AppData, loteId: string): Lote | undefined {
@@ -69,6 +81,89 @@ export function getVentasByCiclo(data: AppData, cicloId: string): Venta[] {
   return data.ventas.filter((v) => v.ciclo_id === cicloId);
 }
 
+function assertValorValido(valor: number, nombre: string): void {
+  if (!Number.isFinite(valor) || valor <= 0) {
+    throw new Error(`${nombre} debe ser mayor que cero.`);
+  }
+}
+
+export function validarDatosCiclo(entradas: EntradasCalculoCiclo): void {
+  assertValorValido(entradas.areaHa, 'El área del lote');
+  entradas.cosechas.forEach((cosecha) =>
+    assertValorValido(cosecha.cantidadKg, 'La cantidad cosechada')
+  );
+  entradas.ventas.forEach((venta) => {
+    assertValorValido(venta.cantidadKg, 'La cantidad vendida');
+    assertValorValido(venta.precioUnitario, 'El precio de venta');
+  });
+
+  const Q = entradas.cosechas.reduce(
+    (sum, cosecha) => sum + cosecha.cantidadKg,
+    0,
+  );
+  const Qv = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg,
+    0,
+  );
+  if (Qv > Q) {
+    throw new Error('Las ventas no pueden superar la cosecha del ciclo.');
+  }
+}
+
+export function calcularIndicadoresCiclo(
+  entradas: EntradasCalculoCiclo,
+): IndicadoresCiclo {
+  validarDatosCiclo(entradas);
+
+  const costoTotal = entradas.costoInsumos +
+    entradas.costoJornales + entradas.costoOtros;
+  const Q = entradas.cosechas.reduce(
+    (sum, cosecha) => sum + cosecha.cantidadKg,
+    0,
+  );
+  const Qv = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg,
+    0,
+  );
+  const Qnv = Q - Qv;
+  const ingresosRealizados = entradas.ventas.reduce(
+    (sum, venta) => sum + venta.cantidadKg * venta.precioUnitario,
+    0,
+  );
+
+  const costoUnitario = Q > 0 ? costoTotal / Q : null;
+  const costoDeLoVendido = Qv > 0 && costoUnitario !== null
+    ? costoUnitario * Qv
+    : null;
+  const margenRealizado = Qv > 0 && ingresosRealizados > 0 &&
+      costoDeLoVendido !== null
+    ? ingresosRealizados - costoDeLoVendido
+    : null;
+  const rentabilidadSobreCostos = margenRealizado !== null &&
+      costoDeLoVendido !== null && costoDeLoVendido > 0
+    ? margenRealizado / costoDeLoVendido
+    : null;
+  const margenSobreVentas = ingresosRealizados > 0 && margenRealizado !== null
+    ? margenRealizado / ingresosRealizados
+    : null;
+
+  return {
+    costoTotal,
+    costoPorHectarea: entradas.areaHa > 0 ? costoTotal / entradas.areaHa : 0,
+    Q,
+    Qv,
+    Qnv,
+    costoUnitario,
+    costoDeLoVendido,
+    ingresosRealizados,
+    margenRealizado,
+    rentabilidadSobreCostos,
+    margenSobreVentas,
+    rendimiento: Q > 0 ? Q / entradas.areaHa : null,
+    esParcial: Qnv > 0,
+  };
+}
+
 export function calcularCiclo(data: AppData, ciclo: CicloProductivo): CicloCalculo {
   const lote = getLote(data, ciclo.lote_id);
   const areaHa = lote?.area_ha ?? 0;
@@ -82,58 +177,37 @@ export function calcularCiclo(data: AppData, ciclo: CicloProductivo): CicloCalcu
   const actividades = getActividadesByCiclo(data, ciclo.id);
   const costoOtros = actividades.reduce((sum, a) => sum + a.otros_costos, 0);
 
-  const costoTotal = costoInsumos + costoJornales + costoOtros;
-  const costoPorHectarea = areaHa > 0 ? costoTotal / areaHa : 0;
-
   const cosechas = getCosechasByCiclo(data, ciclo.id);
-  const Q = cosechas.reduce((sum, c) => sum + c.cantidad_kg, 0);
-  const unidad = cosechas[0]?.unidad ?? 'kg';
-
   const ventas = getVentasByCiclo(data, ciclo.id);
-  const Qv = ventas.reduce((sum, v) => sum + v.cantidad_kg, 0);
-  const Qnv = Q - Qv;
-
-  const costoUnitario = Q > 0 ? costoTotal / Q : null;
-  const costoDeLoVendido = costoUnitario !== null ? costoUnitario * Qv : null;
-  const rendimiento = Q > 0 && areaHa > 0 ? Q / areaHa : null;
-
-  const ingresosRealizados = ventas.reduce((sum, v) => sum + v.cantidad_kg * v.precio_unitario, 0);
-  const margenRealizado = costoDeLoVendido !== null
-    ? ingresosRealizados - costoDeLoVendido
-    : null;
-  const rentabilidadSobreCostos = costoDeLoVendido !== null && costoDeLoVendido > 0
-    ? margenRealizado !== null ? margenRealizado / costoDeLoVendido : null
-    : null;
-  const margenSobreVentas = ingresosRealizados > 0 && margenRealizado !== null
-    ? margenRealizado / ingresosRealizados
-    : null;
-
-  return {
+  const indicadores = calcularIndicadoresCiclo({
+    areaHa,
     costoInsumos,
     costoJornales,
     costoOtros,
-    costoTotal,
+    cosechas: cosechas.map((cosecha) => ({ cantidadKg: cosecha.cantidad_kg })),
+    ventas: ventas.map((venta) => ({
+      cantidadKg: venta.cantidad_kg,
+      precioUnitario: venta.precio_unitario,
+    })),
+  });
+
+  return {
+    ...indicadores,
+    costoInsumos,
+    costoJornales,
+    costoOtros,
     areaHa,
-    costoPorHectarea,
-    Q,
-    Qv,
-    Qnv,
-    costoUnitario,
-    costoDeLoVendido,
-    rendimiento,
-    ingresosRealizados,
-    margenRealizado,
-    rentabilidadSobreCostos,
-    margenSobreVentas,
-    unidad,
-    esParcial: Qnv > 0,
+    unidad: cosechas[0]?.unidad ?? 'kg',
   };
 }
 
 export function calcularResultadoProyectado(
   calculo: Pick<CicloCalculo, 'ingresosRealizados' | 'Qnv' | 'costoTotal'>,
   precioUnitarioEstimado: number,
-): number {
+): number | null {
+  if (!Number.isFinite(precioUnitarioEstimado) || precioUnitarioEstimado <= 0) {
+    return null;
+  }
   return calculo.ingresosRealizados +
     calculo.Qnv * precioUnitarioEstimado - calculo.costoTotal;
 }

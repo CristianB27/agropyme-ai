@@ -26,12 +26,12 @@ function normalize(value: string): string {
 
 function formatPercent(value: number | null): string {
   return value === null
-    ? "no calculable"
+    ? "no disponible"
     : `${percentFormatter.format(value * 100)} %`;
 }
 
 function formatCurrency(value: number | null): string {
-  return value === null ? "no calculable" : currencyFormatter.format(value);
+  return value === null ? "no disponible" : currencyFormatter.format(value);
 }
 
 function cycleMatchesQuestion(
@@ -83,10 +83,10 @@ function answerCost(cycle: CycleSummary | undefined): string {
     : ` El costo unitario de producción es ${
       decimalFormatter.format(cycle.costoUnitario)
     } COP por kg.`;
-  const partial = cycle.pendienteKg > 0
-    ? cycle.vendidoKg > 0
-      ? " La cosecha está parcialmente vendida, por lo que el resultado financiero aún es parcial."
-      : " La cosecha aún no tiene ventas registradas, por lo que el resultado financiero aún es parcial."
+  const partial = cycle.Qnv > 0
+    ? cycle.Qv > 0
+      ? " La cosecha está parcialmente vendida, por lo que los indicadores realizados son parciales."
+      : " La cosecha aún no tiene ventas registradas, por lo que los indicadores realizados son parciales."
     : "";
   return `El ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) tiene un costo total de ${
     currencyFormatter.format(cycle.costoTotal)
@@ -104,7 +104,7 @@ function answerProfitability(summary: DataSummary, question: string): string {
     cycle.ingresosRealizados > 0
   );
   if (cyclesWithSales.length === 0) {
-    return "Todavía no hay ventas registradas en tus ciclos, por lo que aún no es posible calcular rentabilidad realizada.";
+    return "Todavía no hay ventas registradas en tus ciclos, por lo que el margen realizado, el margen sobre ventas y la rentabilidad sobre costos no están disponibles.";
   }
 
   const mentioned = [...cyclesWithSales]
@@ -121,13 +121,13 @@ function answerProfitability(summary: DataSummary, question: string): string {
     )[0];
   const partial = best.esParcial
     ? ` Quedan ${
-      decimalFormatter.format(best.pendienteKg)
-    } kg sin vender, así que el resultado financiero del ciclo es parcial.`
+      decimalFormatter.format(best.Qnv)
+    } kg sin vender, así que el margen realizado, el margen sobre ventas y la rentabilidad sobre costos son parciales.`
     : "";
   const cycleDescription = mentioned
     ? `El ciclo de ${best.cultivo} en ${best.lote} (${best.finca})`
-    : `El ciclo con mayor rentabilidad sobre el costo de lo vendido es ${best.cultivo} en ${best.lote} (${best.finca})`;
-  return `${cycleDescription}: ingresos por ventas ${
+    : `El ciclo con mayor rentabilidad sobre costos es ${best.cultivo} en ${best.lote} (${best.finca})`;
+  return `${cycleDescription}: ingresos realizados ${
     currencyFormatter.format(best.ingresosRealizados)
   }, costo total ${
     currencyFormatter.format(best.costoTotal)
@@ -135,7 +135,7 @@ function answerProfitability(summary: DataSummary, question: string): string {
     formatCurrency(best.costoDeLoVendido)
   } y margen realizado ${
     formatCurrency(best.margenRealizado)
-  }. La rentabilidad sobre costo de lo vendido es ${
+  }. La rentabilidad sobre costos es ${
     formatPercent(best.rentabilidadSobreCostos)
   } y el margen sobre ventas es ${
     formatPercent(best.margenSobreVentas)
@@ -212,17 +212,25 @@ function answerSummary(summary: DataSummary): string {
   if (summary.totales.ciclos === 0) {
     return `Tu cuenta todavía no tiene ciclos productivos. Tienes ${summary.totales.fincas} finca(s) y ${summary.totales.lotes} lote(s) registrados.`;
   }
+  const partial = summary.ciclos.some((cycle) => cycle.esParcial)
+    ? " Hay ciclos con cosecha pendiente, por lo que sus indicadores realizados son parciales."
+    : "";
+  const ingresos = summary.totales.ingresos > 0
+    ? currencyFormatter.format(summary.totales.ingresos)
+    : "no disponible";
+  const costoDeLoVendido = summary.totales.ingresos > 0
+    ? currencyFormatter.format(summary.totales.costoDeLoVendido)
+    : "no disponible";
+  const margenRealizado = summary.totales.ingresos > 0
+    ? currencyFormatter.format(summary.totales.margenRealizado)
+    : "no disponible";
   return `Tienes ${summary.totales.fincas} finca(s), ${summary.totales.lotes} lote(s) y ${summary.totales.ciclos} ciclo(s). Los costos registrados suman ${
     currencyFormatter.format(summary.totales.costos)
-  }, los ingresos realizados ${
-    currencyFormatter.format(summary.totales.ingresos)
-  }, el costo de lo vendido ${
-    currencyFormatter.format(summary.totales.costoDeLoVendido)
-  } y el margen realizado ${
-    currencyFormatter.format(summary.totales.margenRealizado)
-  }. Has producido ${
+  }, los ingresos realizados ${ingresos}, el costo de lo vendido ${costoDeLoVendido} y el margen realizado ${margenRealizado}. Has producido ${
     decimalFormatter.format(summary.totales.produccionKg)
-  } kg y vendido ${decimalFormatter.format(summary.totales.vendidoKg)} kg.`;
+  } kg y vendido ${
+    decimalFormatter.format(summary.totales.vendidoKg)
+  } kg.${partial}`;
 }
 
 export function deterministicAnswer(
