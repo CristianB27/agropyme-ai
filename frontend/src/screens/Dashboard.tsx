@@ -8,6 +8,7 @@ import {
   Droplets, Thermometer, ShoppingCart, Package, Info, Calculator, ChevronDown, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import ReferenciaRendimientoMaizCard from '../components/ReferenciaRendimientoMaizCard';
 import type { ClimaFinca, Finca } from '../types';
 import {
   calcularCiclo,
@@ -18,6 +19,7 @@ import {
   getCultivo,
 } from '../utils/calculos';
 import { formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../utils/format';
+import { esCultivoMaiz } from '../utils/rendimientoMaiz';
 
 const COLORS = ['#2E7D32', '#66BB6A', '#A5D6A7'];
 
@@ -139,6 +141,7 @@ export default function Dashboard() {
 
   const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId) ?? data.ciclos_productivos[0];
   const calc = useMemo(() => ciclo ? calcularCiclo(data, ciclo) : null, [data, ciclo]);
+  const cultivoCiclo = ciclo ? getCultivo(data, ciclo.cultivo_id) : undefined;
   const lote = ciclo ? getLote(data, ciclo.lote_id) : undefined;
   const cycleFinca = lote ? getFinca(data, lote.finca_id) : undefined;
   const finca = cycleFinca ?? data.fincas[0];
@@ -401,6 +404,16 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
+
+          {/* Referencia histórica de rendimiento para maíz */}
+          {ciclo && esCultivoMaiz(cultivoCiclo?.nombre) && (
+            <ReferenciaRendimientoMaizCard
+              key={ciclo.id}
+              finca={cycleFinca}
+              fechaInicio={ciclo.fecha_inicio}
+              rendimientoReal={calc.rendimiento}
+            />
+          )}
 
           {/* Gráficos */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
