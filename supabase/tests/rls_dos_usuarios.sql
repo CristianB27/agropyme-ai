@@ -25,23 +25,24 @@ values ('aaaaaaaa-0000-4000-8000-000000000004', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaa
         'aaaaaaaa-0000-4000-8000-000000000002', '10000000-0000-0000-0000-000000000001',
         '2026-01-01', 'activo');
 
-insert into public.actividades (id, user_id, ciclo_id, tipo, fecha, descripcion, otros_costos)
+insert into public.actividades
+  (id, user_id, ciclo_id, nombre, tipo, fecha, descripcion, otros_costos)
 values ('aaaaaaaa-0000-4000-8000-000000000005', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        'aaaaaaaa-0000-4000-8000-000000000004', 'Siembra', '2026-01-02',
-        'Actividad de prueba A', 0);
+        'aaaaaaaa-0000-4000-8000-000000000004', 'Siembra de prueba A', 'Siembra',
+        '2026-01-02', null, 0);
 
 insert into public.insumos
-  (id, user_id, ciclo_id, actividad_id, proveedor_id, fecha, nombre, cantidad, unidad, costo_unitario)
+  (id, user_id, ciclo_id, actividad_id, proveedor_id, fecha, nombre, descripcion, cantidad, unidad, costo_unitario)
 values ('aaaaaaaa-0000-4000-8000-000000000006', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         'aaaaaaaa-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000005',
         'aaaaaaaa-0000-4000-8000-000000000003', '2026-01-02', 'Semilla de prueba A',
-        1, 'kg', 1000);
+        null, 1, 'kg', 1000);
 
 insert into public.mano_de_obra
-  (id, user_id, ciclo_id, actividad_id, fecha, num_jornales, valor_jornal)
+  (id, user_id, ciclo_id, actividad_id, fecha, nombre, descripcion, num_jornales, valor_jornal)
 values ('aaaaaaaa-0000-4000-8000-000000000007', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         'aaaaaaaa-0000-4000-8000-000000000004', 'aaaaaaaa-0000-4000-8000-000000000005',
-        '2026-01-02', 1, 1000);
+        '2026-01-02', 'Jornal de prueba A', null, 1, 1000);
 
 insert into public.cosechas
   (id, user_id, ciclo_id, fecha, cantidad, unidad_id, cantidad_kg)

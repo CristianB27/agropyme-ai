@@ -350,10 +350,9 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                     {jornales.length > 0 && (
                       <ul className="mt-1.5 space-y-1">
                         {jornales.map((j) => {
-                          const act = actividades.find((a) => a.id === j.actividad_id);
                           return (
                             <li key={j.id} className="text-xs text-gray-500 flex justify-between">
-                              <span>{act?.tipo ?? '—'} ({j.num_jornales} jornales)</span>
+                              <span>{j.nombre} ({j.num_jornales} jornales)</span>
                               <span className="tnum">{formatCOP(j.num_jornales * j.valor_jornal)}</span>
                             </li>
                           );
@@ -370,7 +369,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                       <ul className="mt-1.5 space-y-1">
                         {actividades.filter((a) => a.otros_costos > 0).map((a) => (
                           <li key={a.id} className="text-xs text-gray-500 flex justify-between">
-                            <span>{a.tipo}</span>
+                            <span>{a.nombre}</span>
                             <span className="tnum">{formatCOP(a.otros_costos)}</span>
                           </li>
                         ))}

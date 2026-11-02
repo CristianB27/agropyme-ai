@@ -1,6 +1,6 @@
 # Esquema de AgroPyme AI
 
-Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones [`supabase/migrations/20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) y [`supabase/migrations/20261030220000_calcular_cantidad_kg.sql`](../supabase/migrations/20261030220000_calcular_cantidad_kg.sql).
+Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101120000_nombre_descripcion_registros.sql`](../supabase/migrations/20261101120000_nombre_descripcion_registros.sql).
 
 ## Convenciones
 
@@ -18,13 +18,15 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 | `lotes` | `finca_id`, `nombre`, `area_ha > 0` | Finca `on delete cascade` |
 | `ciclos` | `lote_id`, `cultivo_id`, `fecha_inicio`, `fecha_fin`, `estado` | Lote `cascade`; cultivo `restrict` |
 | `proveedores` | `nombre`, `contacto` | — |
-| `actividades` | `ciclo_id`, `tipo`, `fecha`, `descripcion`, `otros_costos >= 0` | Ciclo `cascade` |
-| `insumos` | `ciclo_id`, `actividad_id?`, `proveedor_id?`, fecha, cantidad, unidad y costo | Ciclo `cascade`; actividad/proveedor `restrict` |
-| `mano_de_obra` | `ciclo_id`, `actividad_id?`, fecha, jornales y valor | Ciclo `cascade`; actividad `restrict` |
+| `actividades` | `ciclo_id`, `nombre`, `tipo`, `fecha`, `descripcion?`, `otros_costos >= 0` | Ciclo `cascade` |
+| `insumos` | `ciclo_id`, `actividad_id?`, `proveedor_id?`, fecha, `nombre`, `descripcion?`, cantidad, unidad y costo | Ciclo `cascade`; actividad/proveedor `restrict` |
+| `mano_de_obra` | `ciclo_id`, `actividad_id?`, fecha, `nombre`, `descripcion?`, jornales y valor | Ciclo `cascade`; actividad `restrict` |
 | `cosechas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg > 0` | Ciclo `cascade`; unidad `restrict` |
 | `ventas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg`, precio y comprador | Ciclo `cascade`; unidad `restrict` |
 
 Las relaciones incluyen `user_id`. Esto impide, además del RLS, vincular un lote a una finca de otro usuario o una actividad de otro ciclo.
+
+Los registros de insumos, actividades y mano de obra mantienen separados el campo `nombre`, que identifica el registro, y el campo opcional `descripcion`, que se muestra en la ventana de detalles. En una descripción vacía se almacena `NULL`.
 
 ## Catálogos compartidos
 

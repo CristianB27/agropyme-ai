@@ -44,9 +44,10 @@ export interface Actividad {
   id: EntityId;
   user_id: EntityId;
   ciclo_id: EntityId;
+  nombre: string;
   tipo: string;
   fecha: string;
-  descripcion: string;
+  descripcion: string | null;
   otros_costos: number;
 }
 
@@ -58,6 +59,7 @@ export interface Insumo {
   proveedor_id: EntityId | null;
   fecha: string;
   nombre: string;
+  descripcion: string | null;
   cantidad: number;
   unidad: string;
   costo_unitario: number;
@@ -69,6 +71,8 @@ export interface ManoDeObra {
   ciclo_id: EntityId;
   actividad_id: EntityId | null;
   fecha: string;
+  nombre: string;
+  descripcion: string | null;
   num_jornales: number;
   valor_jornal: number;
 }

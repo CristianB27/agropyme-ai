@@ -34,6 +34,12 @@ function stringValue(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+function nullableStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function mapFinca(row: RawRow): Finca {
   return {
     id: stringValue(row.id),
@@ -82,9 +88,10 @@ function mapActividad(row: RawRow): Actividad {
     id: stringValue(row.id),
     user_id: stringValue(row.user_id),
     ciclo_id: stringValue(row.ciclo_id),
+    nombre: stringValue(row.nombre) || stringValue(row.tipo),
     tipo: stringValue(row.tipo),
     fecha: stringValue(row.fecha),
-    descripcion: stringValue(row.descripcion),
+    descripcion: nullableStringValue(row.descripcion),
     otros_costos: numberValue(row.otros_costos),
   };
 }
@@ -98,6 +105,7 @@ function mapInsumo(row: RawRow): Insumo {
     proveedor_id: typeof row.proveedor_id === 'string' ? row.proveedor_id : null,
     fecha: stringValue(row.fecha),
     nombre: stringValue(row.nombre),
+    descripcion: nullableStringValue(row.descripcion),
     cantidad: numberValue(row.cantidad),
     unidad: stringValue(row.unidad),
     costo_unitario: numberValue(row.costo_unitario),
@@ -111,6 +119,8 @@ function mapManoDeObra(row: RawRow): ManoDeObra {
     ciclo_id: stringValue(row.ciclo_id),
     actividad_id: typeof row.actividad_id === 'string' ? row.actividad_id : null,
     fecha: stringValue(row.fecha),
+    nombre: stringValue(row.nombre) || 'Jornal',
+    descripcion: nullableStringValue(row.descripcion),
     num_jornales: numberValue(row.num_jornales),
     valor_jornal: numberValue(row.valor_jornal),
   };

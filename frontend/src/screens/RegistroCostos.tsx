@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, Package, User, Wrench, Save } from 'lucide-react';
+import { CheckCircle2, Package, User, Wrench, Save, Eye, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { cicloLabel, getActividadesByCiclo } from '../utils/calculos';
-import { formatCOP, formatDate } from '../utils/format';
+import { formatCOP, formatDate, formatNumber } from '../utils/format';
 
 type Tab = 'insumo' | 'jornal' | 'actividad';
 
@@ -13,11 +13,21 @@ const TIPOS_ACTIVIDAD = [
 
 const UNIDADES = ['kg', 'L', 'bulto', 'unidad'];
 
+type CategoriaRegistro = 'Insumo' | 'Jornal' | 'Actividad';
+
+interface DetalleCampo {
+  etiqueta: string;
+  valor: string;
+}
+
 interface RegistroReciente {
+  id: string;
   fecha: string;
-  categoria: string;
-  descripcion: string;
+  categoria: CategoriaRegistro;
+  nombre: string;
+  descripcion: string | null;
   valor: number;
+  campos: DetalleCampo[];
 }
 
 export default function RegistroCostos() {
@@ -26,6 +36,7 @@ export default function RegistroCostos() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [registroSeleccionado, setRegistroSeleccionado] = useState<RegistroReciente | null>(null);
 
   const [loteId, setLoteId] = useState<string | null>(selectedLoteForCost);
   const ciclosDelLote = useMemo(
@@ -73,6 +84,7 @@ export default function RegistroCostos() {
 
   // Insumo form state
   const [insNombre, setInsNombre] = useState('');
+  const [insDescripcion, setInsDescripcion] = useState('');
   const [insCantidad, setInsCantidad] = useState('');
   const [insUnidad, setInsUnidad] = useState('kg');
   const [insCostoUnit, setInsCostoUnit] = useState('');
@@ -83,6 +95,8 @@ export default function RegistroCostos() {
   const insTotal = (Number(insCantidad) || 0) * (Number(insCostoUnit) || 0);
 
   // Jornal form state
+  const [jornNombre, setJornNombre] = useState('');
+  const [jornDescripcion, setJornDescripcion] = useState('');
   const [jornNum, setJornNum] = useState('');
   const [jornValor, setJornValor] = useState('');
   const [jornActividad, setJornActividad] = useState('');
@@ -91,6 +105,7 @@ export default function RegistroCostos() {
   const jornTotal = (Number(jornNum) || 0) * (Number(jornValor) || 0);
 
   // Actividad form state
+  const [actNombre, setActNombre] = useState('');
   const [actTipo, setActTipo] = useState(TIPOS_ACTIVIDAD[0]);
   const [actDesc, setActDesc] = useState('');
   const [actOtros, setActOtros] = useState('');
@@ -104,14 +119,56 @@ export default function RegistroCostos() {
     const records: RegistroReciente[] = [];
 
     data.insumos.filter((i) => i.ciclo_id === cicloId).forEach((i) => {
-      records.push({ fecha: i.fecha, categoria: 'Insumo', descripcion: i.nombre, valor: i.cantidad * i.costo_unitario });
+      const proveedor = data.proveedores.find((p) => p.id === i.proveedor_id);
+      const actividad = data.actividades.find((a) => a.id === i.actividad_id);
+      records.push({
+        id: `insumo-${i.id}`,
+        fecha: i.fecha,
+        categoria: 'Insumo',
+        nombre: i.nombre,
+        descripcion: i.descripcion,
+        valor: i.cantidad * i.costo_unitario,
+        campos: [
+          { etiqueta: 'Cantidad', valor: `${formatNumber(i.cantidad, 2)} ${i.unidad}` },
+          { etiqueta: 'Costo unitario', valor: formatCOP(i.costo_unitario) },
+          { etiqueta: 'Costo total', valor: formatCOP(i.cantidad * i.costo_unitario) },
+          { etiqueta: 'Proveedor', valor: proveedor?.nombre ?? 'Sin proveedor' },
+          { etiqueta: 'Actividad asociada', valor: actividad?.nombre ?? 'Sin actividad' },
+        ],
+      });
     });
+
     data.mano_de_obra.filter((m) => m.ciclo_id === cicloId).forEach((m) => {
-      const act = data.actividades.find((a) => a.id === m.actividad_id);
-      records.push({ fecha: m.fecha, categoria: 'Jornal', descripcion: `${act?.tipo ?? '—'} (${m.num_jornales} jornales)`, valor: m.num_jornales * m.valor_jornal });
+      const actividad = data.actividades.find((a) => a.id === m.actividad_id);
+      records.push({
+        id: `jornal-${m.id}`,
+        fecha: m.fecha,
+        categoria: 'Jornal',
+        nombre: m.nombre,
+        descripcion: m.descripcion,
+        valor: m.num_jornales * m.valor_jornal,
+        campos: [
+          { etiqueta: 'Número de jornales', valor: formatNumber(m.num_jornales, 2) },
+          { etiqueta: 'Valor del jornal', valor: formatCOP(m.valor_jornal) },
+          { etiqueta: 'Costo total', valor: formatCOP(m.num_jornales * m.valor_jornal) },
+          { etiqueta: 'Actividad asociada', valor: actividad?.nombre ?? 'Sin actividad' },
+        ],
+      });
     });
+
     data.actividades.filter((a) => a.ciclo_id === cicloId).forEach((a) => {
-      records.push({ fecha: a.fecha, categoria: 'Actividad', descripcion: `${a.tipo}: ${a.descripcion}`, valor: a.otros_costos });
+      records.push({
+        id: `actividad-${a.id}`,
+        fecha: a.fecha,
+        categoria: 'Actividad',
+        nombre: a.nombre,
+        descripcion: a.descripcion,
+        valor: a.otros_costos,
+        campos: [
+          { etiqueta: 'Tipo', valor: a.tipo },
+          { etiqueta: 'Otros costos', valor: formatCOP(a.otros_costos) },
+        ],
+      });
     });
 
     return records.sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -123,13 +180,13 @@ export default function RegistroCostos() {
   };
 
   const resetInsumo = () => {
-    setInsNombre(''); setInsCantidad(''); setInsUnidad('kg'); setInsCostoUnit(''); setInsActividad('');
+    setInsNombre(''); setInsDescripcion(''); setInsCantidad(''); setInsUnidad('kg'); setInsCostoUnit(''); setInsActividad('');
   };
   const resetJornal = () => {
-    setJornNum(''); setJornValor(''); setJornActividad('');
+    setJornNombre(''); setJornDescripcion(''); setJornNum(''); setJornValor(''); setJornActividad('');
   };
   const resetActividad = () => {
-    setActTipo(TIPOS_ACTIVIDAD[0]); setActDesc(''); setActOtros('');
+    setActNombre(''); setActTipo(TIPOS_ACTIVIDAD[0]); setActDesc(''); setActOtros('');
   };
 
   const handleGuardar = async () => {
@@ -152,6 +209,7 @@ export default function RegistroCostos() {
         proveedor_id: insProveedor || null,
         fecha,
         nombre: insNombre.trim(),
+        descripcion: insDescripcion.trim() || null,
         cantidad: Number(insCantidad),
         unidad: insUnidad,
         costo_unitario: Number(insCostoUnit),
@@ -159,6 +217,7 @@ export default function RegistroCostos() {
       resetInsumo();
     } else if (tab === 'jornal') {
       const e = {
+        nombre: !jornNombre.trim(),
         num: jornNum === '' || Number(jornNum) <= 0,
         valor: jornValor === '' || Number(jornValor) <= 0,
       };
@@ -169,22 +228,25 @@ export default function RegistroCostos() {
         ciclo_id: cicloId,
         actividad_id: actId,
         fecha,
+        nombre: jornNombre.trim(),
+        descripcion: jornDescripcion.trim() || null,
         num_jornales: Number(jornNum),
         valor_jornal: Number(jornValor),
       });
       resetJornal();
     } else if (tab === 'actividad') {
       const e = {
+        nombre: !actNombre.trim(),
         tipo: !actTipo,
-        desc: !actDesc.trim(),
       };
       setActErrors(e);
       if (Object.values(e).some(Boolean)) return;
       await addActividad({
         ciclo_id: cicloId,
+        nombre: actNombre.trim(),
         tipo: actTipo,
         fecha,
-        descripcion: actDesc.trim(),
+        descripcion: actDesc.trim() || null,
         otros_costos: actOtros ? Number(actOtros) : 0,
       });
       resetActividad();
@@ -321,8 +383,12 @@ export default function RegistroCostos() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Actividad asociada (opcional)</label>
                   <select value={insActividad} onChange={(e) => setInsActividad(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
                     <option value="">Sin actividad</option>
-                    {actividadesCiclo.map((a) => <option key={a.id} value={a.id}>{a.tipo}</option>)}
+                    {actividadesCiclo.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                   </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                  <textarea value={insDescripcion} onChange={(e) => setInsDescripcion(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Añade información adicional sobre el insumo..." />
                 </div>
               </div>
               <div className="flex items-center justify-between bg-[#2E7D32]/5 rounded-lg px-4 py-3">
@@ -336,6 +402,11 @@ export default function RegistroCostos() {
           {tab === 'jornal' && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del jornal</label>
+                  <input value={jornNombre} onChange={(e) => setJornNombre(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. Siembra de maíz" />
+                  {jornErrors.nombre && <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Número de jornales</label>
                   <input value={jornNum} onChange={(e) => setJornNum(e.target.value)} type="number" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 10" />
@@ -350,8 +421,12 @@ export default function RegistroCostos() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Actividad asociada (opcional)</label>
                   <select value={jornActividad} onChange={(e) => setJornActividad(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
                     <option value="">Sin actividad</option>
-                    {actividadesCiclo.map((a) => <option key={a.id} value={a.id}>{a.tipo}</option>)}
+                    {actividadesCiclo.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                   </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                  <textarea value={jornDescripcion} onChange={(e) => setJornDescripcion(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Añade información adicional sobre el jornal..." />
                 </div>
               </div>
               <div className="flex items-center justify-between bg-[#2E7D32]/5 rounded-lg px-4 py-3">
@@ -365,6 +440,11 @@ export default function RegistroCostos() {
           {tab === 'actividad' && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la actividad</label>
+                  <input value={actNombre} onChange={(e) => setActNombre(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. Preparación del suelo" />
+                  {actErrors.nombre && <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>}
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
                   <select value={actTipo} onChange={(e) => setActTipo(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
@@ -377,9 +457,8 @@ export default function RegistroCostos() {
                   <input value={actOtros} onChange={(e) => setActOtros(e.target.value)} type="number" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 2000000" />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
                   <textarea value={actDesc} onChange={(e) => setActDesc(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Describe la actividad realizada..." />
-                  {actErrors.desc && <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>}
                 </div>
               </div>
             </>
@@ -407,13 +486,14 @@ export default function RegistroCostos() {
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Fecha</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Categoría</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Descripción</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Nombre</th>
                   <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Valor</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {registrosRecientes.map((r, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                {registrosRecientes.map((r) => (
+                  <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-gray-600 tnum">{formatDate(r.fecha)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -424,14 +504,31 @@ export default function RegistroCostos() {
                         {r.categoria}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{r.descripcion}</td>
+                    <td className="px-4 py-3 text-gray-700">{r.nombre}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-900 tnum">{formatCOP(r.valor)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setRegistroSeleccionado(r)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-1"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Ver más detalles
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+
+      {registroSeleccionado && (
+        <DetalleRegistroModal
+          registro={registroSeleccionado}
+          onClose={() => setRegistroSeleccionado(null)}
+        />
       )}
 
       {/* Toast */}
@@ -443,6 +540,86 @@ export default function RegistroCostos() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function DetalleRegistroModal({
+  registro,
+  onClose,
+}: {
+  registro: RegistroReciente;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default bg-black/40"
+        onClick={onClose}
+        aria-label="Cerrar detalles del registro"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detalle-registro-title"
+        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-xl border-b border-gray-200 bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#2E7D32]">
+              {registro.categoria}
+            </p>
+            <h3 id="detalle-registro-title" className="mt-1 text-base font-semibold text-gray-900">
+              {registro.nombre}
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+            aria-label="Cerrar"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg bg-gray-50 p-3">
+              <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">Fecha</dt>
+              <dd className="mt-1 text-sm font-medium text-gray-900 tnum">{formatDate(registro.fecha)}</dd>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3">
+              <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">Valor total</dt>
+              <dd className="mt-1 text-sm font-semibold text-gray-900 tnum">{formatCOP(registro.valor)}</dd>
+            </div>
+            {registro.campos.map((campo) => (
+              <div key={campo.etiqueta} className="rounded-lg bg-gray-50 p-3">
+                <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">{campo.etiqueta}</dt>
+                <dd className="mt-1 break-words text-sm font-medium text-gray-900">{campo.valor}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div>
+            <h4 className="text-sm font-semibold text-gray-900">Descripción</h4>
+            <p className="mt-2 whitespace-pre-wrap rounded-lg border border-gray-200 bg-white p-3 text-sm leading-relaxed text-gray-700">
+              {registro.descripcion ?? 'Sin descripción'}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
