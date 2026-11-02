@@ -162,6 +162,11 @@ export type NuevoCiclo = Omit<CicloProductivo, 'id' | 'user_id' | 'fecha_fin' | 
 export type NuevaActividad = Omit<Actividad, 'id' | 'user_id'>;
 export type NuevoInsumo = Omit<Insumo, 'id' | 'user_id'>;
 export type NuevaManoDeObra = Omit<ManoDeObra, 'id' | 'user_id'>;
+export type NuevoProveedor = {
+  nombre: string;
+  contacto?: string | null;
+};
+
 
 async function insertAndMap<TPayload extends Record<string, unknown>, TResult>(
   table: string,
@@ -172,6 +177,33 @@ async function insertAndMap<TPayload extends Record<string, unknown>, TResult>(
   assertError(error);
   return mapper(data as RawRow);
 }
+async function updateAndMap<TPayload extends Record<string, unknown>, TResult>(
+  table: string,
+  id: string,
+  payload: TPayload,
+  mapper: (row: RawRow) => TResult,
+): Promise<TResult> {
+  const { data, error } = await supabase
+    .from(table)
+    .update(payload)
+    .eq('id', id)
+    .select('*')
+    .single();
+  assertError(error);
+  return mapper(data as RawRow);
+}
+
+async function deleteById(table: string, id: string): Promise<void> {
+  const { data, error } = await supabase
+    .from(table)
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  assertError(error);
+  if (!data) throw new Error('El registro no existe o ya fue eliminado.');
+}
+
 
 export async function createFinca(finca: NuevaFinca): Promise<Finca> {
   return insertAndMap('fincas', { ...finca, cod_mun: finca.cod_mun ?? null }, mapFinca);
@@ -210,6 +242,40 @@ export async function createInsumo(insumo: NuevoInsumo): Promise<Insumo> {
 export async function createManoDeObra(jornal: NuevaManoDeObra): Promise<ManoDeObra> {
   return insertAndMap('mano_de_obra', jornal, mapManoDeObra);
 }
+export async function createProveedor(proveedor: NuevoProveedor): Promise<Proveedor> {
+  return insertAndMap('proveedores', {
+    nombre: proveedor.nombre.trim(),
+    contacto: proveedor.contacto?.trim() || null,
+  }, mapProveedor);
+}
+
+export async function updateInsumo(id: string, insumo: NuevoInsumo): Promise<Insumo> {
+  return updateAndMap('insumos', id, insumo, mapInsumo);
+}
+
+export async function deleteInsumo(id: string): Promise<void> {
+  await deleteById('insumos', id);
+}
+
+export async function updateManoDeObra(id: string, jornal: NuevaManoDeObra): Promise<ManoDeObra> {
+  return updateAndMap('mano_de_obra', id, jornal, mapManoDeObra);
+}
+
+export async function deleteManoDeObra(id: string): Promise<void> {
+  await deleteById('mano_de_obra', id);
+}
+
+export async function updateActividad(id: string, actividad: NuevaActividad): Promise<Actividad> {
+  return updateAndMap('actividades', id, actividad, mapActividad);
+}
+
+export async function deleteActividad(id: string): Promise<void> {
+  const { data, error } = await supabase.rpc('eliminar_actividad', { p_actividad_id: id });
+  assertError(error);
+  if (data !== true) throw new Error('La actividad no existe o ya fue eliminada.');
+}
+
+
 
 export async function loadAppData(): Promise<AppData> {
   const [fincas, lotes, proveedores, ciclos, actividades, insumos, manoDeObra, cultivos, unidades, cosechas, ventas] = await Promise.all([

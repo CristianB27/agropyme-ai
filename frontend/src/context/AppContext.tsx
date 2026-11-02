@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AppData, Finca, Lote, CicloProductivo, Insumo, ManoDeObra, Actividad } from '../types';
+import type { AppData, Finca, Lote, CicloProductivo, Insumo, ManoDeObra, Actividad, Proveedor } from '../types';
 import {
   createActividad,
   createCiclo,
@@ -7,14 +7,22 @@ import {
   createInsumo,
   createLote,
   createManoDeObra,
+  createProveedor,
+  deleteActividad as deleteActividadRecord,
+  deleteInsumo as deleteInsumoRecord,
+  deleteManoDeObra as deleteManoDeObraRecord,
   loadAppData,
+  updateActividad as updateActividadRecord,
   updateFincaCodMun,
+  updateInsumo as updateInsumoRecord,
+  updateManoDeObra as updateManoDeObraRecord,
   type NuevaActividad,
   type NuevoCiclo,
   type NuevaFinca,
   type NuevoInsumo,
   type NuevoLote,
   type NuevaManoDeObra,
+  type NuevoProveedor,
 } from '../services/agropyme';
 import { loadClimaForFincas } from '../services/clima';
 
@@ -44,9 +52,16 @@ interface AppContextValue {
   updateFincaCodMun: (fincaId: string, codMun: string | null) => Promise<Finca>;
   addLote: (lote: NuevoLote) => Promise<Lote>;
   addCiclo: (ciclo: NuevoCiclo) => Promise<CicloProductivo>;
+  addProveedor: (proveedor: NuevoProveedor) => Promise<Proveedor>;
   addInsumo: (insumo: NuevoInsumo) => Promise<Insumo>;
   addManoDeObra: (jornal: NuevaManoDeObra) => Promise<ManoDeObra>;
   addActividad: (actividad: NuevaActividad) => Promise<Actividad>;
+  updateInsumo: (id: string, insumo: NuevoInsumo) => Promise<Insumo>;
+  deleteInsumo: (id: string) => Promise<void>;
+  updateManoDeObra: (id: string, jornal: NuevaManoDeObra) => Promise<ManoDeObra>;
+  deleteManoDeObra: (id: string) => Promise<void>;
+  updateActividad: (id: string, actividad: NuevaActividad) => Promise<Actividad>;
+  deleteActividad: (id: string) => Promise<void>;
   selectedLoteForCost: string | null;
   selectedCicloForCost: string | null;
   setSelectedLoteForCost: (loteId: string | null) => void;
@@ -166,11 +181,81 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
+  const addProveedor = useCallback(async (proveedor: NuevoProveedor) => {
+    const created = await createProveedor(proveedor);
+    setData((previous) => ({ ...previous, proveedores: [...previous.proveedores, created] }));
+    return created;
+  }, []);
+
+  const updateInsumo = useCallback(async (id: string, insumo: NuevoInsumo) => {
+    const updated = await updateInsumoRecord(id, insumo);
+    setData((previous) => ({
+      ...previous,
+      insumos: previous.insumos.map((item) => item.id === id ? updated : item),
+    }));
+    return updated;
+  }, []);
+
+  const deleteInsumo = useCallback(async (id: string) => {
+    await deleteInsumoRecord(id);
+    setData((previous) => ({
+      ...previous,
+      insumos: previous.insumos.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const updateManoDeObra = useCallback(async (id: string, jornal: NuevaManoDeObra) => {
+    const updated = await updateManoDeObraRecord(id, jornal);
+    setData((previous) => ({
+      ...previous,
+      mano_de_obra: previous.mano_de_obra.map((item) => item.id === id ? updated : item),
+    }));
+    return updated;
+  }, []);
+
+  const deleteManoDeObra = useCallback(async (id: string) => {
+    await deleteManoDeObraRecord(id);
+    setData((previous) => ({
+      ...previous,
+      mano_de_obra: previous.mano_de_obra.filter((item) => item.id !== id),
+    }));
+  }, []);
+
+  const updateActividad = useCallback(async (id: string, actividad: NuevaActividad) => {
+    const updated = await updateActividadRecord(id, actividad);
+    setData((previous) => ({
+      ...previous,
+      actividades: previous.actividades.map((item) => item.id === id ? updated : item),
+    }));
+    return updated;
+  }, []);
+
+  const deleteActividad = useCallback(async (id: string) => {
+    await deleteActividadRecord(id);
+    setData((previous) => ({
+      ...previous,
+      actividades: previous.actividades.filter((item) => item.id !== id),
+      insumos: previous.insumos.map((item) => item.actividad_id === id ? { ...item, actividad_id: null } : item),
+      mano_de_obra: previous.mano_de_obra.map((item) => item.actividad_id === id ? { ...item, actividad_id: null } : item),
+    }));
+  }, []);
+
+
   const value = useMemo<AppContextValue>(() => ({
-    data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll, addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, addCiclo, addInsumo,
-    addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost,
+    data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll,
+    addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, addCiclo,
+    addProveedor, addInsumo, addManoDeObra, addActividad,
+    updateInsumo, deleteInsumo, updateManoDeObra, deleteManoDeObra,
+    updateActividad, deleteActividad,
+    selectedLoteForCost, selectedCicloForCost,
     setSelectedLoteForCost, setSelectedCicloForCost,
-  }), [data, loading, climaLoading, error, refresh, refreshClimaForAll, addFinca, updateFincaCodMunCallback, addLote, addCiclo, addInsumo, addManoDeObra, addActividad, selectedLoteForCost, selectedCicloForCost]);
+  }), [
+    data, loading, climaLoading, error, refresh, refreshClimaForAll,
+    addFinca, updateFincaCodMunCallback, addLote, addCiclo, addProveedor,
+    addInsumo, addManoDeObra, addActividad, updateInsumo, deleteInsumo,
+    updateManoDeObra, deleteManoDeObra, updateActividad, deleteActividad,
+    selectedLoteForCost, selectedCicloForCost,
+  ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

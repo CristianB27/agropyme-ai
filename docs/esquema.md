@@ -1,6 +1,6 @@
 # Esquema de AgroPyme AI
 
-Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101120000_nombre_descripcion_registros.sql`](../supabase/migrations/20261101120000_nombre_descripcion_registros.sql).
+Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101130000_eliminar_actividad.sql`](../supabase/migrations/20261101130000_eliminar_actividad.sql).
 
 ## Convenciones
 
@@ -46,6 +46,12 @@ with check ((select auth.uid()) = user_id)
 
 El rol `anon` no tiene permisos sobre datos privados. El rol `service_role` conserva acceso administrativo.
 
+## Eliminación segura de actividades
+
+La función `public.eliminar_actividad(p_actividad_id uuid)` elimina una actividad sin eliminar los insumos ni los jornales asociados. Primero establece `actividad_id = null` en ambos registros de costos y después elimina la actividad. Todas las operaciones se ejecutan en una sola transacción.
+
+La función usa `security invoker`, por lo que las políticas RLS siguen aplicando: sólo se pueden modificar o eliminar registros del usuario autenticado. La migración revoca la ejecución para `public` y `anon`, y la concede a `authenticated`.
+
 ## Conversión de cantidades a kg
 
 El trigger `calcular_cantidad_kg` se ejecuta antes de insertar o modificar `cosechas` y `ventas`. Consulta `unidades.factor_a_kg` y escribe:
@@ -80,6 +86,14 @@ El script [`supabase/tests/cantidad_kg.sql`](../supabase/tests/cantidad_kg.sql) 
 ```powershell
 .\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\cantidad_kg.sql
 ```
+
+El script [`supabase/tests/editar_eliminar_registros.sql`](../supabase/tests/editar_eliminar_registros.sql) comprueba la edición de proveedores, actividades, insumos y jornales; la desvinculación segura de una actividad y la eliminación de los registros editables:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\editar_eliminar_registros.sql
+```
+
+La prueba usa una transacción y termina con `ROLLBACK`, por lo que no deja datos de prueba en el proyecto.
 
 ## Clima por finca
 

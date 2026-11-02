@@ -1,8 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
-import { CheckCircle2, Package, User, Wrench, Save, Eye, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Package, User, Wrench, Save, Eye, Plus } from 'lucide-react';
+import { DetalleRegistroModal } from '../components/RegistroCostosModal';
+import type { RegistroSeleccionado } from '../components/RegistroCostosModal';
+import { NuevoProveedorModal } from '../components/NuevoProveedorModal';
 import { useApp } from '../context/AppContext';
 import { cicloLabel, getActividadesByCiclo } from '../utils/calculos';
-import { formatCOP, formatDate, formatNumber } from '../utils/format';
+import { formatCOP, formatDate } from '../utils/format';
 
 type Tab = 'insumo' | 'jornal' | 'actividad';
 
@@ -15,19 +18,13 @@ const UNIDADES = ['kg', 'L', 'bulto', 'unidad'];
 
 type CategoriaRegistro = 'Insumo' | 'Jornal' | 'Actividad';
 
-interface DetalleCampo {
-  etiqueta: string;
-  valor: string;
-}
-
 interface RegistroReciente {
   id: string;
   fecha: string;
   categoria: CategoriaRegistro;
   nombre: string;
-  descripcion: string | null;
   valor: number;
-  campos: DetalleCampo[];
+  seleccion: RegistroSeleccionado;
 }
 
 export default function RegistroCostos() {
@@ -36,7 +33,8 @@ export default function RegistroCostos() {
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [registroSeleccionado, setRegistroSeleccionado] = useState<RegistroReciente | null>(null);
+  const [registroSeleccionado, setRegistroSeleccionado] = useState<RegistroSeleccionado | null>(null);
+  const [proveedorModalAbierto, setProveedorModalAbierto] = useState(false);
 
   const [loteId, setLoteId] = useState<string | null>(selectedLoteForCost);
   const ciclosDelLote = useMemo(
@@ -88,9 +86,20 @@ export default function RegistroCostos() {
   const [insCantidad, setInsCantidad] = useState('');
   const [insUnidad, setInsUnidad] = useState('kg');
   const [insCostoUnit, setInsCostoUnit] = useState('');
-  const [insProveedor, setInsProveedor] = useState(data.proveedores[0]?.id?.toString() ?? '');
+  const [insProveedor, setInsProveedor] = useState('');
   const [insActividad, setInsActividad] = useState('');
   const [insErrors, setInsErrors] = useState<Record<string, boolean>>({});
+  const proveedorSeleccionadoRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !proveedorSeleccionadoRef.current &&
+      data.proveedores.length > 0
+    ) {
+      setInsProveedor(data.proveedores[0].id);
+      proveedorSeleccionadoRef.current = true;
+    }
+  }, [data.proveedores]);
 
   const insTotal = (Number(insCantidad) || 0) * (Number(insCostoUnit) || 0);
 
@@ -119,40 +128,24 @@ export default function RegistroCostos() {
     const records: RegistroReciente[] = [];
 
     data.insumos.filter((i) => i.ciclo_id === cicloId).forEach((i) => {
-      const proveedor = data.proveedores.find((p) => p.id === i.proveedor_id);
-      const actividad = data.actividades.find((a) => a.id === i.actividad_id);
       records.push({
         id: `insumo-${i.id}`,
         fecha: i.fecha,
         categoria: 'Insumo',
         nombre: i.nombre,
-        descripcion: i.descripcion,
         valor: i.cantidad * i.costo_unitario,
-        campos: [
-          { etiqueta: 'Cantidad', valor: `${formatNumber(i.cantidad, 2)} ${i.unidad}` },
-          { etiqueta: 'Costo unitario', valor: formatCOP(i.costo_unitario) },
-          { etiqueta: 'Costo total', valor: formatCOP(i.cantidad * i.costo_unitario) },
-          { etiqueta: 'Proveedor', valor: proveedor?.nombre ?? 'Sin proveedor' },
-          { etiqueta: 'Actividad asociada', valor: actividad?.nombre ?? 'Sin actividad' },
-        ],
+        seleccion: { categoria: 'Insumo', registro: i },
       });
     });
 
     data.mano_de_obra.filter((m) => m.ciclo_id === cicloId).forEach((m) => {
-      const actividad = data.actividades.find((a) => a.id === m.actividad_id);
       records.push({
         id: `jornal-${m.id}`,
         fecha: m.fecha,
         categoria: 'Jornal',
         nombre: m.nombre,
-        descripcion: m.descripcion,
         valor: m.num_jornales * m.valor_jornal,
-        campos: [
-          { etiqueta: 'Número de jornales', valor: formatNumber(m.num_jornales, 2) },
-          { etiqueta: 'Valor del jornal', valor: formatCOP(m.valor_jornal) },
-          { etiqueta: 'Costo total', valor: formatCOP(m.num_jornales * m.valor_jornal) },
-          { etiqueta: 'Actividad asociada', valor: actividad?.nombre ?? 'Sin actividad' },
-        ],
+        seleccion: { categoria: 'Jornal', registro: m },
       });
     });
 
@@ -162,12 +155,8 @@ export default function RegistroCostos() {
         fecha: a.fecha,
         categoria: 'Actividad',
         nombre: a.nombre,
-        descripcion: a.descripcion,
         valor: a.otros_costos,
-        campos: [
-          { etiqueta: 'Tipo', valor: a.tipo },
-          { etiqueta: 'Otros costos', valor: formatCOP(a.otros_costos) },
-        ],
+        seleccion: { categoria: 'Actividad', registro: a },
       });
     });
 
@@ -358,10 +347,32 @@ export default function RegistroCostos() {
                   {insErrors.nombre && <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-                  <select value={insProveedor} onChange={(e) => setInsProveedor(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label htmlFor="insumo-proveedor" className="text-sm font-medium text-gray-700">Proveedor</label>
+                    <button
+                      type="button"
+                      onClick={() => setProveedorModalAbierto(true)}
+                      className="inline-flex items-center gap-1 rounded-md text-xs font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Nuevo proveedor
+                    </button>
+                  </div>
+                  <select
+                    id="insumo-proveedor"
+                    value={insProveedor}
+                    onChange={(e) => {
+                      proveedorSeleccionadoRef.current = true;
+                      setInsProveedor(e.target.value);
+                    }}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                  >
+                    <option value="">Sin proveedor</option>
                     {data.proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
+                  {data.proveedores.length === 0 && (
+                    <p className="mt-1 text-xs text-gray-500">Aún no hay proveedores. Crea el primero para seleccionarlo aquí.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
@@ -509,7 +520,7 @@ export default function RegistroCostos() {
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => setRegistroSeleccionado(r)}
+                        onClick={() => setRegistroSeleccionado(r.seleccion)}
                         className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-1"
                       >
                         <Eye className="h-4 w-4" />
@@ -526,8 +537,21 @@ export default function RegistroCostos() {
 
       {registroSeleccionado && (
         <DetalleRegistroModal
-          registro={registroSeleccionado}
+          seleccion={registroSeleccionado}
           onClose={() => setRegistroSeleccionado(null)}
+          onMensaje={showToast}
+        />
+      )}
+
+      {proveedorModalAbierto && (
+        <NuevoProveedorModal
+          onClose={() => setProveedorModalAbierto(false)}
+          onSaved={(proveedor) => {
+            setInsProveedor(proveedor.id);
+            proveedorSeleccionadoRef.current = true;
+            setProveedorModalAbierto(false);
+            showToast('Proveedor guardado correctamente');
+          }}
         />
       )}
 
@@ -540,86 +564,6 @@ export default function RegistroCostos() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function DetalleRegistroModal({
-  registro,
-  onClose,
-}: {
-  registro: RegistroReciente;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default bg-black/40"
-        onClick={onClose}
-        aria-label="Cerrar detalles del registro"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="detalle-registro-title"
-        className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl"
-      >
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-xl border-b border-gray-200 bg-white px-5 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[#2E7D32]">
-              {registro.categoria}
-            </p>
-            <h3 id="detalle-registro-title" className="mt-1 text-base font-semibold text-gray-900">
-              {registro.nombre}
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            autoFocus
-            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
-            aria-label="Cerrar"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="space-y-5 p-5">
-          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-gray-50 p-3">
-              <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">Fecha</dt>
-              <dd className="mt-1 text-sm font-medium text-gray-900 tnum">{formatDate(registro.fecha)}</dd>
-            </div>
-            <div className="rounded-lg bg-gray-50 p-3">
-              <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">Valor total</dt>
-              <dd className="mt-1 text-sm font-semibold text-gray-900 tnum">{formatCOP(registro.valor)}</dd>
-            </div>
-            {registro.campos.map((campo) => (
-              <div key={campo.etiqueta} className="rounded-lg bg-gray-50 p-3">
-                <dt className="text-xs font-medium uppercase tracking-wider text-gray-500">{campo.etiqueta}</dt>
-                <dd className="mt-1 break-words text-sm font-medium text-gray-900">{campo.valor}</dd>
-              </div>
-            ))}
-          </dl>
-
-          <div>
-            <h4 className="text-sm font-semibold text-gray-900">Descripción</h4>
-            <p className="mt-2 whitespace-pre-wrap rounded-lg border border-gray-200 bg-white p-3 text-sm leading-relaxed text-gray-700">
-              {registro.descripcion ?? 'Sin descripción'}
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
