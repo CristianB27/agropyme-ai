@@ -1,7 +1,21 @@
 import { useState, useMemo } from 'react';
-import { MapPin, Plus, Eye, Receipt, X, CheckCircle2, Sprout, Layers, Ruler, Pencil } from 'lucide-react';
+import {
+  CheckCircle2,
+  Eye,
+  Layers,
+  MapPin,
+  Pencil,
+  Plus,
+  Receipt,
+  Ruler,
+  Sprout,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import MunicipioDaneSelect from '../components/MunicipioDaneSelect';
+import LoteModal from '../components/LoteModal';
+import EliminarLoteModal from '../components/EliminarLoteModal';
 import { calcularCiclo, getCultivo, getFinca } from '../utils/calculos';
 import { formatCOP, formatNumber } from '../utils/format';
 import type { ScreenId } from '../components/Layout';
@@ -12,9 +26,23 @@ interface MisLotesProps {
 }
 
 export default function MisLotes({ onNavigate }: MisLotesProps) {
-  const { data, loading, error, refresh, addFinca, updateFincaCodMun, addLote, addCiclo, setSelectedLoteForCost, setSelectedCicloForCost } = useApp();
+  const {
+    data,
+    loading,
+    error,
+    refresh,
+    addFinca,
+    updateFincaCodMun,
+    addLote,
+    updateLote,
+    deleteLote,
+    addCiclo,
+    setSelectedLoteForCost,
+    setSelectedCicloForCost,
+  } = useApp();
   const [detailLoteId, setDetailLoteId] = useState<string | null>(null);
-  const [modal, setModal] = useState<'finca' | 'lote' | 'ciclo' | 'municipio' | null>(null);
+  const [modal, setModal] = useState<'finca' | 'lote' | 'editar-lote' | 'eliminar-lote' | 'ciclo' | 'municipio' | null>(null);
+  const [loteSeleccionadoId, setLoteSeleccionadoId] = useState<string | null>(null);
   const [fincaMunicipioId, setFincaMunicipioId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -44,6 +72,21 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     setSelectedLoteForCost(loteId);
     setSelectedCicloForCost(cicloId);
     onNavigate('costos');
+  };
+
+  const abrirEdicionLote = (loteId: string) => {
+    setLoteSeleccionadoId(loteId);
+    setModal('editar-lote');
+  };
+
+  const abrirEliminacionLote = (loteId: string) => {
+    setLoteSeleccionadoId(loteId);
+    setModal('eliminar-lote');
+  };
+
+  const cerrarModal = () => {
+    setModal(null);
+    setLoteSeleccionadoId(null);
   };
 
   if (loading) {
@@ -144,7 +187,10 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
             <tbody>
               {lotesRows.map(({ lote, finca, cicloReciente, cultivo, calc }) => (
                 <tr key={lote.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{lote.nombre}</td>
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-gray-900">{lote.nombre}</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">{lote.municipio}</span>
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{finca?.nombre ?? '—'}</td>
                   <td className="px-4 py-3 text-right text-gray-600 tnum">{formatNumber(lote.area_ha, 1)}</td>
                   <td className="px-4 py-3 text-gray-600">{cultivo?.nombre ?? '—'}</td>
@@ -165,19 +211,37 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       <button
+                        type="button"
                         onClick={() => setDetailLoteId(lote.id)}
                         className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-[#2E7D32] hover:bg-[#2E7D32]/10 transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" /> Ver detalle
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => abrirEdicionLote(lote.id)}
+                        aria-label={`Editar ${lote.nombre}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Editar
+                      </button>
                       {cicloReciente && (
                         <button
+                          type="button"
                           onClick={() => handleRegistrarCosto(lote.id, cicloReciente.id)}
                           className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
                         >
                           <Receipt className="w-3.5 h-3.5" /> Registrar costo
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => abrirEliminacionLote(lote.id)}
+                        aria-label={`Eliminar ${lote.nombre}`}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -212,15 +276,33 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
       )}
       {modal === 'lote' && (
         <LoteModal
-          onClose={() => setModal(null)}
+          key="nuevo-lote"
+          onClose={cerrarModal}
           onSave={async (l) => {
-            try {
-              await addLote(l);
-              setModal(null);
-              showToast('Lote creado correctamente');
-            } catch (caughtError) {
-              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el lote');
-            }
+            await addLote(l);
+            showToast('Lote creado correctamente');
+          }}
+        />
+      )}
+      {modal === 'editar-lote' && loteSeleccionadoId && (
+        <LoteModal
+          key={`editar-lote-${loteSeleccionadoId}`}
+          lote={data.lotes.find((lote) => lote.id === loteSeleccionadoId)}
+          onClose={cerrarModal}
+          onSave={async (l) => {
+            await updateLote(loteSeleccionadoId, l);
+            showToast('Lote actualizado correctamente');
+          }}
+        />
+      )}
+      {modal === 'eliminar-lote' && loteSeleccionadoId && (
+        <EliminarLoteModal
+          key={`eliminar-lote-${loteSeleccionadoId}`}
+          lote={data.lotes.find((lote) => lote.id === loteSeleccionadoId)}
+          onClose={cerrarModal}
+          onConfirm={async () => {
+            await deleteLote(loteSeleccionadoId);
+            showToast('Lote eliminado correctamente');
           }}
         />
       )}
@@ -303,7 +385,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
           <div className="p-5 space-y-5">
             <div>
               <h4 className="text-lg font-bold text-gray-900">{lote.nombre}</h4>
-              <p className="text-sm text-gray-500">{finca?.nombre} · {finca?.municipio}</p>
+              <p className="text-sm text-gray-500">{finca?.nombre} · {lote.municipio}</p>
               <p className="text-sm text-gray-500 tnum mt-1">Área: {formatNumber(lote.area_ha, 1)} ha</p>
             </div>
 
@@ -403,9 +485,9 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
   );
 }
 
-function FieldError({ show }: { show: boolean }) {
+function FieldError({ show, message = 'Este campo es obligatorio' }: { show: boolean; message?: string }) {
   if (!show) return null;
-  return <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>;
+  return <p className="text-xs text-red-500 mt-1">{message}</p>;
 }
 
 function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { nombre: string; municipio: string; cod_mun: string | null; latitud: number; longitud: number }) => void }) {
@@ -494,53 +576,6 @@ function FincaMunicipioModal({ finca, onClose, onSave }: { finca?: Finca; onClos
           onClick={() => onSave(codMun)}
           className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors"
         >
-          Guardar
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
-
-function LoteModal({ onClose, onSave }: { onClose: () => void; onSave: (l: { finca_id: string; nombre: string; area_ha: number }) => void }) {
-  const { data } = useApp();
-  const [fincaId, setFincaId] = useState(data.fincas[0]?.id?.toString() ?? '');
-  const [nombre, setNombre] = useState('');
-  const [areaHa, setAreaHa] = useState('');
-  const [errors, setErrors] = useState({ finca_id: false, nombre: false, area_ha: false });
-
-  const handleSave = () => {
-    const e = {
-      finca_id: !fincaId,
-      nombre: !nombre.trim(),
-      area_ha: areaHa === '' || isNaN(Number(areaHa)) || Number(areaHa) <= 0,
-    };
-    setErrors(e);
-    if (Object.values(e).some(Boolean)) return;
-    onSave({ finca_id: fincaId, nombre: nombre.trim(), area_ha: Number(areaHa) });
-  };
-
-  return (
-    <ModalShell title="Nuevo lote" onClose={onClose}>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Finca</label>
-          <select value={fincaId} onChange={(e) => setFincaId(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
-            <option value="">Selecciona una finca</option>
-            {data.fincas.map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
-          </select>
-          <FieldError show={errors.finca_id} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. Lote Sur" />
-          <FieldError show={errors.nombre} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Área (ha)</label>
-          <input value={areaHa} onChange={(e) => setAreaHa(e.target.value)} type="number" step="0.1" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 2.5" />
-          <FieldError show={errors.area_ha} />
-        </div>
-        <button onClick={handleSave} className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors">
           Guardar
         </button>
       </div>

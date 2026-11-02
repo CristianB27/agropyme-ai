@@ -410,6 +410,7 @@ export default function Dashboard() {
             <ReferenciaRendimientoMaizCard
               key={ciclo.id}
               finca={cycleFinca}
+              lote={lote}
               fechaInicio={ciclo.fecha_inicio}
               rendimientoReal={calc.rendimiento}
             />

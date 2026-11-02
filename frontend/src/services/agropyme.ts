@@ -60,6 +60,8 @@ function mapLote(row: RawRow): Lote {
     finca_id: stringValue(row.finca_id),
     nombre: stringValue(row.nombre),
     area_ha: numberValue(row.area_ha),
+    municipio: stringValue(row.municipio),
+    cod_mun: nullableStringValue(row.cod_mun),
   };
 }
 
@@ -159,7 +161,9 @@ function mapVenta(row: RawRow, unidades: Map<string, Unidad>): Venta {
 }
 
 export type NuevaFinca = Omit<Finca, 'id' | 'user_id' | 'cod_mun'> & { cod_mun?: string | null };
-export type NuevoLote = Omit<Lote, 'id' | 'user_id'>;
+export type NuevoLote = Omit<Lote, 'id' | 'user_id' | 'cod_mun'> & {
+  cod_mun?: string | null;
+};
 export type NuevoCiclo = Omit<CicloProductivo, 'id' | 'user_id' | 'fecha_fin' | 'estado'>;
 export type NuevaActividad = Omit<Actividad, 'id' | 'user_id' | 'tipo_personalizado'> & {
   tipo_personalizado?: string | null;
@@ -228,7 +232,27 @@ export async function updateFincaCodMun(
 }
 
 export async function createLote(lote: NuevoLote): Promise<Lote> {
-  return insertAndMap('lotes', lote, mapLote);
+  return insertAndMap('lotes', {
+    ...lote,
+    nombre: lote.nombre.trim(),
+    municipio: lote.municipio.trim(),
+    cod_mun: lote.cod_mun ?? null,
+  }, mapLote);
+}
+
+export async function updateLote(id: string, lote: NuevoLote): Promise<Lote> {
+  return updateAndMap('lotes', id, {
+    ...lote,
+    nombre: lote.nombre.trim(),
+    municipio: lote.municipio.trim(),
+    cod_mun: lote.cod_mun ?? null,
+  }, mapLote);
+}
+
+export async function deleteLote(id: string): Promise<void> {
+  const { data, error } = await supabase.rpc('eliminar_lote', { p_lote_id: id });
+  assertError(error);
+  if (data !== true) throw new Error('El lote no existe o ya fue eliminado.');
 }
 
 export async function createCiclo(ciclo: NuevoCiclo): Promise<CicloProductivo> {

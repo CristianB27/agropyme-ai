@@ -25,6 +25,8 @@ const data: AppData = {
     finca_id: 'finca-1',
     nombre: 'Lote Norte',
     area_ha: 2.5,
+    municipio: 'María la Baja',
+    cod_mun: null,
   }],
   cultivos: [{ id: 'cultivo-1', nombre: 'Maíz' }],
   ciclos_productivos: [{

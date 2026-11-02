@@ -10,11 +10,13 @@ import {
   createProveedor,
   deleteActividad as deleteActividadRecord,
   deleteInsumo as deleteInsumoRecord,
+  deleteLote as deleteLoteRecord,
   deleteManoDeObra as deleteManoDeObraRecord,
   loadAppData,
   updateActividad as updateActividadRecord,
   updateFincaCodMun,
   updateInsumo as updateInsumoRecord,
+  updateLote as updateLoteRecord,
   updateManoDeObra as updateManoDeObraRecord,
   type NuevaActividad,
   type NuevoCiclo,
@@ -51,6 +53,8 @@ interface AppContextValue {
   addFinca: (finca: NuevaFinca) => Promise<Finca>;
   updateFincaCodMun: (fincaId: string, codMun: string | null) => Promise<Finca>;
   addLote: (lote: NuevoLote) => Promise<Lote>;
+  updateLote: (id: string, lote: NuevoLote) => Promise<Lote>;
+  deleteLote: (id: string) => Promise<void>;
   addCiclo: (ciclo: NuevoCiclo) => Promise<CicloProductivo>;
   addProveedor: (proveedor: NuevoProveedor) => Promise<Proveedor>;
   addInsumo: (insumo: NuevoInsumo) => Promise<Insumo>;
@@ -157,6 +161,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
+  const updateLote = useCallback(async (id: string, lote: NuevoLote) => {
+    const updated = await updateLoteRecord(id, lote);
+    setData((previous) => ({
+      ...previous,
+      lotes: previous.lotes.map((item) => item.id === id ? updated : item),
+    }));
+    return updated;
+  }, []);
+
+  const deleteLote = useCallback(async (id: string) => {
+    const cicloIds = new Set(
+      data.ciclos_productivos
+        .filter((ciclo) => ciclo.lote_id === id)
+        .map((ciclo) => ciclo.id),
+    );
+
+    await deleteLoteRecord(id);
+    setData((previous) => ({
+      ...previous,
+      lotes: previous.lotes.filter((lote) => lote.id !== id),
+      ciclos_productivos: previous.ciclos_productivos.filter((ciclo) => ciclo.lote_id !== id),
+      actividades: previous.actividades.filter((actividad) => !cicloIds.has(actividad.ciclo_id)),
+      insumos: previous.insumos.filter((insumo) => !cicloIds.has(insumo.ciclo_id)),
+      mano_de_obra: previous.mano_de_obra.filter((jornal) => !cicloIds.has(jornal.ciclo_id)),
+      cosechas: previous.cosechas.filter((cosecha) => !cicloIds.has(cosecha.ciclo_id)),
+      ventas: previous.ventas.filter((venta) => !cicloIds.has(venta.ciclo_id)),
+    }));
+    setSelectedLoteForCost((current) => current === id ? null : current);
+    setSelectedCicloForCost((current) => current && cicloIds.has(current) ? null : current);
+  }, [data.ciclos_productivos]);
+
   const addCiclo = useCallback(async (ciclo: NuevoCiclo) => {
     const created = await createCiclo(ciclo);
     setData((previous) => ({ ...previous, ciclos_productivos: [...previous.ciclos_productivos, created] }));
@@ -243,7 +278,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(() => ({
     data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll,
-    addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, addCiclo,
+    addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, updateLote, deleteLote, addCiclo,
     addProveedor, addInsumo, addManoDeObra, addActividad,
     updateInsumo, deleteInsumo, updateManoDeObra, deleteManoDeObra,
     updateActividad, deleteActividad,
@@ -251,7 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedLoteForCost, setSelectedCicloForCost,
   }), [
     data, loading, climaLoading, error, refresh, refreshClimaForAll,
-    addFinca, updateFincaCodMunCallback, addLote, addCiclo, addProveedor,
+    addFinca, updateFincaCodMunCallback, addLote, updateLote, deleteLote, addCiclo, addProveedor,
     addInsumo, addManoDeObra, addActividad, updateInsumo, deleteInsumo,
     updateManoDeObra, deleteManoDeObra, updateActividad, deleteActividad,
     selectedLoteForCost, selectedCicloForCost,

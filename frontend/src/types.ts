@@ -23,6 +23,8 @@ export interface Lote {
   finca_id: EntityId;
   nombre: string;
   area_ha: number;
+  municipio: string;
+  cod_mun: string | null;
 }
 
 export interface Cultivo {

@@ -1,6 +1,6 @@
 # Esquema de AgroPyme AI
 
-Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101140000_tipo_personalizado_actividad.sql`](../supabase/migrations/20261101140000_tipo_personalizado_actividad.sql).
+Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101150000_editar_eliminar_lote.sql`](../supabase/migrations/20261101150000_editar_eliminar_lote.sql).
 
 ## Convenciones
 
@@ -15,7 +15,7 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 | Tabla | Campos principales | Relaciones y borrado |
 |---|---|---|
 | `fincas` | `nombre`, `municipio`, `cod_mun`, `latitud`, `longitud` | — |
-| `lotes` | `finca_id`, `nombre`, `area_ha > 0` | Finca `on delete cascade` |
+| `lotes` | `finca_id`, `nombre`, `area_ha > 0`, `municipio`, `cod_mun?` | Finca `on delete cascade` |
 | `ciclos` | `lote_id`, `cultivo_id`, `fecha_inicio`, `fecha_fin`, `estado` | Lote `cascade`; cultivo `restrict` |
 | `proveedores` | `nombre`, `contacto` | — |
 | `actividades` | `ciclo_id`, `nombre`, `tipo`, `tipo_personalizado?`, `fecha`, `descripcion?`, `otros_costos >= 0` | Ciclo `cascade` |
@@ -25,6 +25,8 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 | `ventas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg`, precio y comprador | Ciclo `cascade`; unidad `restrict` |
 
 Las relaciones incluyen `user_id`. Esto impide, además del RLS, vincular un lote a una finca de otro usuario o una actividad de otro ciclo.
+
+Cada lote conserva su propio `municipio` y su código DANE opcional `cod_mun`. Al agregar la migración, estos valores se copiaron desde la finca asociada para mantener el historial; posteriormente, editar el municipio de un sub-lote no modifica los demás lotes de la misma finca. El municipio de la finca continúa siendo la referencia geográfica para el pronóstico climático.
 
 Los registros de insumos, actividades y mano de obra mantienen separados el campo `nombre`, que identifica el registro, y el campo opcional `descripcion`, que se muestra en la ventana de detalles. En una descripción vacía se almacena `NULL`.
 
@@ -53,6 +55,12 @@ El rol `anon` no tiene permisos sobre datos privados. El rol `service_role` cons
 La función `public.eliminar_actividad(p_actividad_id uuid)` elimina una actividad sin eliminar los insumos ni los jornales asociados. Primero establece `actividad_id = null` en ambos registros de costos y después elimina la actividad. Todas las operaciones se ejecutan en una sola transacción.
 
 La función usa `security invoker`, por lo que las políticas RLS siguen aplicando: sólo se pueden modificar o eliminar registros del usuario autenticado. La migración revoca la ejecución para `public` y `anon`, y la concede a `authenticated`.
+
+## Eliminación segura de lotes
+
+La función `public.eliminar_lote(p_lote_id uuid)` elimina un lote y todos sus registros relacionados dentro de una sola transacción. Antes de borrar el lote, la función desvincula los insumos y jornales de sus actividades para resolver las claves foráneas `ON DELETE RESTRICT`. Después, la eliminación en cascada de PostgreSQL elimina sus ciclos, actividades, insumos, jornales, cosechas y ventas.
+
+La función usa `security invoker`, por lo que las políticas RLS siguen aplicando: sólo se puede eliminar un lote del usuario autenticado. La interfaz de Mis Lotes muestra un diálogo de confirmación, explica que la acción no se puede deshacer y presenta el número de registros afectados antes de solicitar la confirmación.
 
 ## Conversión de cantidades a kg
 
@@ -104,6 +112,14 @@ El script [`supabase/tests/tipo_personalizado_actividad.sql`](../supabase/tests/
 ```
 
 Este script también usa una transacción y termina con `ROLLBACK`.
+
+El script [`supabase/tests/editar_eliminar_lote.sql`](../supabase/tests/editar_eliminar_lote.sql) comprueba la edición de nombre, área, municipio y código DANE de un lote, además de la eliminación atómica de sus ciclos y registros asociados:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\editar_eliminar_lote.sql
+```
+
+La prueba utiliza una transacción y termina con `ROLLBACK`, por lo que no deja datos de prueba en el proyecto.
 
 ## Clima por finca
 

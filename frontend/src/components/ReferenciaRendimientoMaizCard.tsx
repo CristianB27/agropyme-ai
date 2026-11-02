@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Info, Wheat } from 'lucide-react';
-import type { Finca } from '../types';
+import type { Finca, Lote } from '../types';
 import type { SistemaMaiz } from '../data/rendimientoMaiz';
 import {
   buscarRegistroRendimientoMaiz,
@@ -11,19 +11,23 @@ import { formatNumber, formatPercent } from '../utils/format';
 
 interface ReferenciaRendimientoMaizCardProps {
   finca?: Finca;
+  lote?: Lote;
   fechaInicio: string;
   rendimientoReal: number | null;
 }
 
 export default function ReferenciaRendimientoMaizCard({
   finca,
+  lote,
   fechaInicio,
   rendimientoReal,
 }: ReferenciaRendimientoMaizCardProps) {
   const [sistema, setSistema] = useState<SistemaMaiz>('TRADICIONAL');
   const semestre = derivarSemestre(fechaInicio);
+  const codMun = lote ? lote.cod_mun : finca?.cod_mun;
+  const municipio = lote ? lote.municipio : finca?.municipio;
   const registro = semestre
-    ? buscarRegistroRendimientoMaiz(finca?.cod_mun, sistema, semestre)
+    ? buscarRegistroRendimientoMaiz(codMun, sistema, semestre)
     : undefined;
   const diferencia = registro
     ? calcularDiferenciaPorcentual(rendimientoReal, registro.esperado_kg_ha)
@@ -42,7 +46,7 @@ export default function ReferenciaRendimientoMaizCard({
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
               Semestre {semestre ?? 'no disponible'}
-              {finca?.municipio ? ` · ${finca.municipio}` : ''}
+              {municipio ? ` · ${municipio}` : ''}
             </p>
           </div>
         </div>
@@ -66,10 +70,10 @@ export default function ReferenciaRendimientoMaizCard({
         </div>
       </div>
 
-      {!finca?.cod_mun ? (
+      {!codMun ? (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
           <p className="text-sm text-amber-900">
-            Agrega el municipio (DANE) de la finca en Mis Lotes para consultar la referencia de tu municipio.
+            Agrega el municipio (DANE) del lote en Mis Lotes para consultar la referencia de tu municipio.
           </p>
         </div>
       ) : !registro ? (
