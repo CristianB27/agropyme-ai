@@ -42,6 +42,7 @@ const data: AppData = {
     ciclo_id: 'ciclo-1',
     nombre: 'Siembra de maíz',
     tipo: 'Siembra',
+    tipo_personalizado: null,
     fecha: '2026-01-02',
     descripcion: 'Aplicación de fertilizante en el lote',
     otros_costos: 2_000_000,

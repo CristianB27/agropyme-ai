@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { normalizarTipoPersonalizado } from '../utils/actividades';
 import type {
   Actividad,
   AppData,
@@ -90,6 +91,7 @@ function mapActividad(row: RawRow): Actividad {
     ciclo_id: stringValue(row.ciclo_id),
     nombre: stringValue(row.nombre) || stringValue(row.tipo),
     tipo: stringValue(row.tipo),
+    tipo_personalizado: nullableStringValue(row.tipo_personalizado),
     fecha: stringValue(row.fecha),
     descripcion: nullableStringValue(row.descripcion),
     otros_costos: numberValue(row.otros_costos),
@@ -159,7 +161,9 @@ function mapVenta(row: RawRow, unidades: Map<string, Unidad>): Venta {
 export type NuevaFinca = Omit<Finca, 'id' | 'user_id' | 'cod_mun'> & { cod_mun?: string | null };
 export type NuevoLote = Omit<Lote, 'id' | 'user_id'>;
 export type NuevoCiclo = Omit<CicloProductivo, 'id' | 'user_id' | 'fecha_fin' | 'estado'>;
-export type NuevaActividad = Omit<Actividad, 'id' | 'user_id'>;
+export type NuevaActividad = Omit<Actividad, 'id' | 'user_id' | 'tipo_personalizado'> & {
+  tipo_personalizado?: string | null;
+};
 export type NuevoInsumo = Omit<Insumo, 'id' | 'user_id'>;
 export type NuevaManoDeObra = Omit<ManoDeObra, 'id' | 'user_id'>;
 export type NuevoProveedor = {
@@ -232,7 +236,13 @@ export async function createCiclo(ciclo: NuevoCiclo): Promise<CicloProductivo> {
 }
 
 export async function createActividad(actividad: NuevaActividad): Promise<Actividad> {
-  return insertAndMap('actividades', actividad, mapActividad);
+  return insertAndMap('actividades', {
+    ...actividad,
+    tipo_personalizado: normalizarTipoPersonalizado(
+      actividad.tipo,
+      actividad.tipo_personalizado ?? '',
+    ),
+  }, mapActividad);
 }
 
 export async function createInsumo(insumo: NuevoInsumo): Promise<Insumo> {
@@ -266,7 +276,13 @@ export async function deleteManoDeObra(id: string): Promise<void> {
 }
 
 export async function updateActividad(id: string, actividad: NuevaActividad): Promise<Actividad> {
-  return updateAndMap('actividades', id, actividad, mapActividad);
+  return updateAndMap('actividades', id, {
+    ...actividad,
+    tipo_personalizado: normalizarTipoPersonalizado(
+      actividad.tipo,
+      actividad.tipo_personalizado ?? '',
+    ),
+  }, mapActividad);
 }
 
 export async function deleteActividad(id: string): Promise<void> {

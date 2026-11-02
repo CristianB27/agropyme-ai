@@ -1,6 +1,6 @@
 # Esquema de AgroPyme AI
 
-Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101130000_eliminar_actividad.sql`](../supabase/migrations/20261101130000_eliminar_actividad.sql).
+Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101140000_tipo_personalizado_actividad.sql`](../supabase/migrations/20261101140000_tipo_personalizado_actividad.sql).
 
 ## Convenciones
 
@@ -18,7 +18,7 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 | `lotes` | `finca_id`, `nombre`, `area_ha > 0` | Finca `on delete cascade` |
 | `ciclos` | `lote_id`, `cultivo_id`, `fecha_inicio`, `fecha_fin`, `estado` | Lote `cascade`; cultivo `restrict` |
 | `proveedores` | `nombre`, `contacto` | — |
-| `actividades` | `ciclo_id`, `nombre`, `tipo`, `fecha`, `descripcion?`, `otros_costos >= 0` | Ciclo `cascade` |
+| `actividades` | `ciclo_id`, `nombre`, `tipo`, `tipo_personalizado?`, `fecha`, `descripcion?`, `otros_costos >= 0` | Ciclo `cascade` |
 | `insumos` | `ciclo_id`, `actividad_id?`, `proveedor_id?`, fecha, `nombre`, `descripcion?`, cantidad, unidad y costo | Ciclo `cascade`; actividad/proveedor `restrict` |
 | `mano_de_obra` | `ciclo_id`, `actividad_id?`, fecha, `nombre`, `descripcion?`, jornales y valor | Ciclo `cascade`; actividad `restrict` |
 | `cosechas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg > 0` | Ciclo `cascade`; unidad `restrict` |
@@ -27,6 +27,8 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 Las relaciones incluyen `user_id`. Esto impide, además del RLS, vincular un lote a una finca de otro usuario o una actividad de otro ciclo.
 
 Los registros de insumos, actividades y mano de obra mantienen separados el campo `nombre`, que identifica el registro, y el campo opcional `descripcion`, que se muestra en la ventana de detalles. En una descripción vacía se almacena `NULL`.
+
+Cuando el tipo general de una actividad es `Otra`, el campo opcional `tipo_personalizado` guarda el nombre específico que escribió el usuario. La base de datos exige que este valor no esté vacío y que sólo exista cuando `tipo = 'Otra'`; si el usuario cambia a un tipo estándar, el valor se almacena como `NULL`.
 
 ## Catálogos compartidos
 
@@ -94,6 +96,14 @@ El script [`supabase/tests/editar_eliminar_registros.sql`](../supabase/tests/edi
 ```
 
 La prueba usa una transacción y termina con `ROLLBACK`, por lo que no deja datos de prueba en el proyecto.
+
+El script [`supabase/tests/tipo_personalizado_actividad.sql`](../supabase/tests/tipo_personalizado_actividad.sql) comprueba que el nombre específico de una actividad de tipo `Otra` se persista, que el valor sea opcional y que no pueda asociarse a un tipo distinto:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\tipo_personalizado_actividad.sql
+```
+
+Este script también usa una transacción y termina con `ROLLBACK`.
 
 ## Clima por finca
 

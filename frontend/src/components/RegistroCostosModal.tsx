@@ -3,11 +3,11 @@ import { AlertTriangle, Pencil, Save, Trash2, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import type { Actividad, Insumo, ManoDeObra } from '../types';
 import { formatCOP, formatDate, formatNumber } from '../utils/format';
-
-const TIPOS_ACTIVIDAD = [
-  'Preparación de suelo', 'Siembra', 'Riego', 'Fertilización',
-  'Deshierba', 'Control de plagas', 'Cosecha', 'Otra',
-];
+import {
+  normalizarTipoPersonalizado,
+  TIPO_ACTIVIDAD_OTRA,
+  TIPOS_ACTIVIDAD,
+} from '../utils/actividades';
 
 const UNIDADES = ['kg', 'L', 'bulto', 'unidad'];
 
@@ -33,6 +33,7 @@ interface FormularioEdicion {
   numJornales: string;
   valorJornal: string;
   tipo: string;
+  tipoPersonalizado: string;
   otrosCostos: string;
 }
 
@@ -51,6 +52,7 @@ function formularioInicial(seleccion: RegistroSeleccionado): FormularioEdicion {
     numJornales: '',
     valorJornal: '',
     tipo: TIPOS_ACTIVIDAD[0],
+    tipoPersonalizado: '',
     otrosCostos: '',
   };
 
@@ -86,6 +88,7 @@ function formularioInicial(seleccion: RegistroSeleccionado): FormularioEdicion {
     nombre: seleccion.registro.nombre,
     descripcion: seleccion.registro.descripcion ?? '',
     tipo: seleccion.registro.tipo,
+    tipoPersonalizado: seleccion.registro.tipo_personalizado ?? '',
     otrosCostos: String(seleccion.registro.otros_costos),
   };
 }
@@ -140,6 +143,9 @@ export function DetalleRegistroModal({ seleccion, onClose, onMensaje }: DetalleR
 
     return [
       { etiqueta: 'Tipo', valor: seleccion.registro.tipo },
+      ...(seleccion.registro.tipo_personalizado
+        ? [{ etiqueta: 'Tipo personalizado', valor: seleccion.registro.tipo_personalizado }]
+        : []),
       { etiqueta: 'Otros costos', valor: formatCOP(seleccion.registro.otros_costos) },
     ];
   }, [data.actividades, data.proveedores, seleccion]);
@@ -214,6 +220,10 @@ export function DetalleRegistroModal({ seleccion, onClose, onMensaje }: DetalleR
           ciclo_id: seleccion.registro.ciclo_id,
           nombre: formulario.nombre.trim(),
           tipo: formulario.tipo,
+          tipo_personalizado: normalizarTipoPersonalizado(
+            formulario.tipo,
+            formulario.tipoPersonalizado,
+          ),
           fecha: formulario.fecha,
           descripcion: formulario.descripcion.trim() || null,
           otros_costos: formulario.otrosCostos === '' ? 0 : Number(formulario.otrosCostos),
@@ -463,12 +473,30 @@ export function DetalleRegistroModal({ seleccion, onClose, onMensaje }: DetalleR
                     <select
                       id="editar-tipo-actividad"
                       value={formulario.tipo}
-                      onChange={(event) => cambiarFormulario('tipo', event.target.value)}
+                      onChange={(event) => {
+                        const tipo = event.target.value;
+                        cambiarFormulario('tipo', tipo);
+                        if (tipo !== TIPO_ACTIVIDAD_OTRA) {
+                          cambiarFormulario('tipoPersonalizado', '');
+                        }
+                      }}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
                     >
                       {TIPOS_ACTIVIDAD.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
                     </select>
                   </div>
+                  {formulario.tipo === TIPO_ACTIVIDAD_OTRA && (
+                    <div className="sm:col-span-2">
+                      <label htmlFor="editar-tipo-personalizado" className="block text-sm font-medium text-gray-700 mb-1">Nombre específico del tipo (opcional)</label>
+                      <input
+                        id="editar-tipo-personalizado"
+                        value={formulario.tipoPersonalizado}
+                        onChange={(event) => cambiarFormulario('tipoPersonalizado', event.target.value)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                        placeholder="Ej. Aplicación foliar"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label htmlFor="editar-otros-costos" className="block text-sm font-medium text-gray-700 mb-1">Otros costos (COP)</label>
                     <input

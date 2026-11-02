@@ -46,6 +46,7 @@ export interface Actividad {
   ciclo_id: EntityId;
   nombre: string;
   tipo: string;
+  tipo_personalizado: string | null;
   fecha: string;
   descripcion: string | null;
   otros_costos: number;

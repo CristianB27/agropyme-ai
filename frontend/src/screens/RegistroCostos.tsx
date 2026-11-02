@@ -5,14 +5,14 @@ import type { RegistroSeleccionado } from '../components/RegistroCostosModal';
 import { NuevoProveedorModal } from '../components/NuevoProveedorModal';
 import { useApp } from '../context/AppContext';
 import { cicloLabel, getActividadesByCiclo } from '../utils/calculos';
+import {
+  normalizarTipoPersonalizado,
+  TIPO_ACTIVIDAD_OTRA,
+  TIPOS_ACTIVIDAD,
+} from '../utils/actividades';
 import { formatCOP, formatDate } from '../utils/format';
 
 type Tab = 'insumo' | 'jornal' | 'actividad';
-
-const TIPOS_ACTIVIDAD = [
-  'Preparación de suelo', 'Siembra', 'Riego', 'Fertilización',
-  'Deshierba', 'Control de plagas', 'Cosecha', 'Otra',
-];
 
 const UNIDADES = ['kg', 'L', 'bulto', 'unidad'];
 
@@ -115,7 +115,8 @@ export default function RegistroCostos() {
 
   // Actividad form state
   const [actNombre, setActNombre] = useState('');
-  const [actTipo, setActTipo] = useState(TIPOS_ACTIVIDAD[0]);
+  const [actTipo, setActTipo] = useState<string>(TIPOS_ACTIVIDAD[0]);
+  const [actTipoPersonalizado, setActTipoPersonalizado] = useState('');
   const [actDesc, setActDesc] = useState('');
   const [actOtros, setActOtros] = useState('');
   const [actErrors, setActErrors] = useState<Record<string, boolean>>({});
@@ -175,7 +176,7 @@ export default function RegistroCostos() {
     setJornNombre(''); setJornDescripcion(''); setJornNum(''); setJornValor(''); setJornActividad('');
   };
   const resetActividad = () => {
-    setActNombre(''); setActTipo(TIPOS_ACTIVIDAD[0]); setActDesc(''); setActOtros('');
+    setActNombre(''); setActTipo(TIPOS_ACTIVIDAD[0]); setActTipoPersonalizado(''); setActDesc(''); setActOtros('');
   };
 
   const handleGuardar = async () => {
@@ -234,6 +235,7 @@ export default function RegistroCostos() {
         ciclo_id: cicloId,
         nombre: actNombre.trim(),
         tipo: actTipo,
+        tipo_personalizado: normalizarTipoPersonalizado(actTipo, actTipoPersonalizado),
         fecha,
         descripcion: actDesc.trim() || null,
         otros_costos: actOtros ? Number(actOtros) : 0,
@@ -458,11 +460,31 @@ export default function RegistroCostos() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                  <select value={actTipo} onChange={(e) => setActTipo(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]">
+                  <select
+                    value={actTipo}
+                    onChange={(e) => {
+                      const tipo = e.target.value;
+                      setActTipo(tipo);
+                      if (tipo !== TIPO_ACTIVIDAD_OTRA) setActTipoPersonalizado('');
+                    }}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                  >
                     {TIPOS_ACTIVIDAD.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                   {actErrors.tipo && <p className="text-xs text-red-500 mt-1">Este campo es obligatorio</p>}
                 </div>
+                {actTipo === TIPO_ACTIVIDAD_OTRA && (
+                  <div className="sm:col-span-2">
+                    <label htmlFor="actividad-tipo-personalizado" className="block text-sm font-medium text-gray-700 mb-1">Nombre específico del tipo (opcional)</label>
+                    <input
+                      id="actividad-tipo-personalizado"
+                      value={actTipoPersonalizado}
+                      onChange={(e) => setActTipoPersonalizado(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                      placeholder="Ej. Aplicación foliar"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Otros costos (COP, opcional)</label>
                   <input value={actOtros} onChange={(e) => setActOtros(e.target.value)} type="number" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 2000000" />
