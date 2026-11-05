@@ -1,3 +1,9 @@
+import {
+  type CanonicalIntent,
+  isUnsafeAgroAdvice,
+  predictModel,
+  resolveAssistantIntent,
+} from "./model.ts";
 import type { CycleSummary, DataSummary } from "./types.ts";
 
 const currencyFormatter = new Intl.NumberFormat("es-CO", {
@@ -179,6 +185,86 @@ function answerInputs(cycle: CycleSummary | undefined): string {
   }. Detalle: ${detail}.`;
 }
 
+function answerCostPerHectarea(cycle: CycleSummary | undefined): string {
+  if (!cycle) {
+    return "No tienes ciclos productivos registrados, así que todavía no puedo calcular el costo por hectárea.";
+  }
+  return `El costo por hectárea del ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) es ${
+    currencyFormatter.format(cycle.costoPorHectarea)
+  } por ${decimalFormatter.format(cycle.areaHa)} ha.`;
+}
+
+function answerUnitCost(cycle: CycleSummary | undefined): string {
+  if (!cycle) {
+    return "No tienes ciclos productivos registrados, así que todavía no puedo calcular el costo unitario.";
+  }
+  if (cycle.costoUnitario === null) {
+    return `El ciclo de ${cycle.cultivo} en ${cycle.lote} no tiene producción cosechada para calcular el costo por kg.`;
+  }
+  return `El costo unitario del ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) es ${
+    decimalFormatter.format(cycle.costoUnitario)
+  } COP por kg.`;
+}
+
+function answerSales(cycle: CycleSummary | undefined): string {
+  if (!cycle) {
+    return "No tienes ciclos productivos registrados, así que todavía no puedo consultar las ventas.";
+  }
+  const partial = cycle.esParcial
+    ? ` Quedan ${decimalFormatter.format(cycle.Qnv)} kg sin vender.`
+    : "";
+  return `En el ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) los ingresos realizados por ventas son ${
+    currencyFormatter.format(cycle.ingresosRealizados)
+  } y se vendieron ${decimalFormatter.format(cycle.Qv)} kg.${partial}`;
+}
+
+function answerProduction(cycle: CycleSummary | undefined): string {
+  if (!cycle) {
+    return "No tienes ciclos productivos registrados, así que todavía no puedo consultar la producción.";
+  }
+  const partial = cycle.esParcial
+    ? "Los indicadores realizados son parciales porque todavía queda cosecha sin vender."
+    : "La cosecha está totalmente vendida.";
+  return `En el ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) se cosecharon ${
+    decimalFormatter.format(cycle.Q)
+  } kg, se vendieron ${decimalFormatter.format(cycle.Qv)} kg y quedan ${
+    decimalFormatter.format(cycle.Qnv)
+  } kg sin vender. ${partial}`;
+}
+
+function answerComparison(summary: DataSummary, question: string): string {
+  const normalized = normalize(question);
+  const mentioned = summary.ciclos.filter((cycle) =>
+    cycleMatchesQuestion(cycle, normalized) > 0
+  );
+  const selected = mentioned.length >= 2 ? mentioned : [...summary.ciclos]
+    .sort((left, right) => left.fechaInicio.localeCompare(right.fechaInicio))
+    .slice(-2);
+  if (selected.length === 0) {
+    return "No tienes ciclos productivos registrados para comparar.";
+  }
+  const details = selected.map((cycle) =>
+    `${cycle.cultivo} en ${cycle.lote} (${cycle.finca}): costo total ${
+      currencyFormatter.format(cycle.costoTotal)
+    }, producción ${decimalFormatter.format(cycle.Q)} kg, vendido ${
+      decimalFormatter.format(cycle.Qv)
+    } kg y margen realizado ${formatCurrency(cycle.margenRealizado)}`
+  ).join("; ");
+  return `Comparación de ciclos: ${details}.`;
+}
+
+function answerIndicatorExplanation(): string {
+  return "Q es el total cosechado, Qv el total vendido y Qnv = Q - Qv la producción pendiente de venta. El costo unitario es costo total dividido entre Q; el costo de lo vendido es costo unitario por Qv; el margen realizado es ingresos realizados menos costo de lo vendido; el margen sobre ventas divide el margen entre los ingresos, y la rentabilidad sobre costos divide el margen entre el costo de lo vendido.";
+}
+
+function answerHelp(): string {
+  return "Hola. Puedo consultar costos, insumos, jornales, ventas, rentabilidad, producción, comparación de ciclos y clima de tus lotes. También puedo explicarte los indicadores del proyecto.";
+}
+
+function answerOutsideScope(): string {
+  return "Esa consulta está fuera del alcance del asistente agrícola. Puedo ayudarte con costos, insumos, jornales, ventas, rentabilidad, producción, comparación de ciclos y clima de tus lotes.";
+}
+
 function answerClimate(summary: DataSummary, question: string): string {
   const farm = findFarm(summary, question);
   if (!farm) {
@@ -208,70 +294,43 @@ function answerClimate(summary: DataSummary, question: string): string {
   } mm.${alert}`;
 }
 
-function answerSummary(summary: DataSummary): string {
-  if (summary.totales.ciclos === 0) {
-    return `Tu cuenta todavía no tiene ciclos productivos. Tienes ${summary.totales.fincas} finca(s) y ${summary.totales.lotes} lote(s) registrados.`;
-  }
-  const partial = summary.ciclos.some((cycle) => cycle.esParcial)
-    ? " Hay ciclos con cosecha pendiente, por lo que sus indicadores realizados son parciales."
-    : "";
-  const ingresos = summary.totales.ingresos > 0
-    ? currencyFormatter.format(summary.totales.ingresos)
-    : "no disponible";
-  const costoDeLoVendido = summary.totales.ingresos > 0
-    ? currencyFormatter.format(summary.totales.costoDeLoVendido)
-    : "no disponible";
-  const margenRealizado = summary.totales.ingresos > 0
-    ? currencyFormatter.format(summary.totales.margenRealizado)
-    : "no disponible";
-  return `Tienes ${summary.totales.fincas} finca(s), ${summary.totales.lotes} lote(s) y ${summary.totales.ciclos} ciclo(s). Los costos registrados suman ${
-    currencyFormatter.format(summary.totales.costos)
-  }, los ingresos realizados ${ingresos}, el costo de lo vendido ${costoDeLoVendido} y el margen realizado ${margenRealizado}. Has producido ${
-    decimalFormatter.format(summary.totales.produccionKg)
-  } kg y vendido ${
-    decimalFormatter.format(summary.totales.vendidoKg)
-  } kg.${partial}`;
-}
-
 export function deterministicAnswer(
   question: string,
   summary: DataSummary,
+  detectedIntent?: CanonicalIntent,
 ): string {
-  const normalized = normalize(question);
   const cycle = selectCycle(summary, question);
+  const intent = detectedIntent ??
+    resolveAssistantIntent(question, predictModel(question).intent);
 
-  if (
-    normalized.includes("clima") || normalized.includes("lluvia") ||
-    normalized.includes("pronostico") || normalized.includes("tiempo") ||
-    normalized.includes("temperatura")
-  ) {
-    return answerClimate(summary, question);
+  if (isUnsafeAgroAdvice(question)) return answerOutsideScope();
+
+  switch (intent) {
+    case "costo_total":
+      return answerCost(cycle);
+    case "costo_por_hectarea":
+      return answerCostPerHectarea(cycle);
+    case "costo_unitario":
+      return answerUnitCost(cycle);
+    case "jornales":
+      return answerLabor(cycle);
+    case "insumos":
+      return answerInputs(cycle);
+    case "ingresos_ventas":
+      return answerSales(cycle);
+    case "rentabilidad":
+      return answerProfitability(summary, question);
+    case "produccion_y_sin_vender":
+      return answerProduction(cycle);
+    case "comparar_ciclos":
+      return answerComparison(summary, question);
+    case "clima":
+      return answerClimate(summary, question);
+    case "explicar_indicador":
+      return answerIndicatorExplanation();
+    case "saludo_ayuda":
+      return answerHelp();
+    case "fuera_de_alcance":
+      return answerOutsideScope();
   }
-  if (
-    normalized.includes("rentable") || normalized.includes("rentabilidad") ||
-    normalized.includes("utilidad") || normalized.includes("ganancia") ||
-    normalized.includes("margen")
-  ) {
-    return answerProfitability(summary, question);
-  }
-  if (
-    normalized.includes("jornal") || normalized.includes("mano de obra") ||
-    normalized.includes("trabajo")
-  ) {
-    return answerLabor(cycle);
-  }
-  if (
-    normalized.includes("insumo") || normalized.includes("semilla") ||
-    normalized.includes("fertilizante") || normalized.includes("herbicida") ||
-    normalized.includes("urea")
-  ) {
-    return answerInputs(cycle);
-  }
-  if (
-    normalized.includes("costo") || normalized.includes("coste") ||
-    normalized.includes("cuanto") || normalized.includes("produccion")
-  ) {
-    return answerCost(cycle);
-  }
-  return answerSummary(summary);
 }

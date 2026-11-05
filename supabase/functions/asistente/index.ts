@@ -1,6 +1,11 @@
 import { askAnthropic } from "./anthropic.ts";
 import { AuthenticationError, loadUserData } from "./data.ts";
 import { deterministicAnswer } from "./fallback.ts";
+import {
+  isUnsafeAgroAdvice,
+  predictModel,
+  resolveAssistantIntent,
+} from "./model.ts";
 import { buildDataSummary } from "./summary.ts";
 import type {
   AssistantRequest,
@@ -118,7 +123,29 @@ Deno.serve(async (request: Request) => {
     const accessToken = authorization.slice("Bearer ".length).trim();
     const userData = await loadUserData(accessToken);
     const summary = buildDataSummary(userData, parsed.clima);
-    const anthropicAnswer = await askAnthropic(parsed, summary);
+
+    const prediction = predictModel(parsed.question);
+    const intent = resolveAssistantIntent(parsed.question, prediction.intent);
+    const unsafe = isUnsafeAgroAdvice(parsed.question);
+    const effectiveIntent = unsafe ? "fuera_de_alcance" : intent;
+
+    if (effectiveIntent === "fuera_de_alcance") {
+      const response: AssistantResponse = {
+        answer: deterministicAnswer(
+          parsed.question,
+          summary,
+          effectiveIntent,
+        ),
+        source: "fallback",
+      };
+      return jsonResponse(response);
+    }
+
+    const anthropicAnswer = await askAnthropic(
+      parsed,
+      summary,
+      effectiveIntent,
+    );
 
     if (anthropicAnswer) {
       const response: AssistantResponse = {
@@ -129,7 +156,11 @@ Deno.serve(async (request: Request) => {
     }
 
     const response: AssistantResponse = {
-      answer: deterministicAnswer(parsed.question, summary),
+      answer: deterministicAnswer(
+        parsed.question,
+        summary,
+        effectiveIntent,
+      ),
       source: "fallback",
       notice:
         "La IA generativa no está configurada o no está disponible; la respuesta se calculó con tus datos reales.",

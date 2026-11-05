@@ -625,6 +625,57 @@ Deno.test("el fallback distingue una cosecha sin ventas de una venta parcial", (
   );
 });
 
+Deno.test("el fallback despacha las trece intenciones canónicas", () => {
+  const summary = buildDataSummary(userData, [{
+    finca_id: "finca-2",
+    pronostico: [{
+      dia: "Hoy",
+      temp_max: 31,
+      temp_min: 22,
+      lluvia_mm: 45,
+    }],
+    alerta: null,
+    error: null,
+  }]);
+  const cases = [
+    ["costo_total", "costo total"],
+    ["costo_por_hectarea", "costo por hectárea"],
+    ["costo_unitario", "costo unitario"],
+    ["jornales", "jornales"],
+    ["insumos", "gasto en insumos"],
+    ["ingresos_ventas", "ingresos realizados por ventas"],
+    ["rentabilidad", "rentabilidad sobre costos"],
+    ["produccion_y_sin_vender", "sin vender"],
+    ["comparar_ciclos", "Comparación de ciclos"],
+    ["clima", "pronóstico de 5 días"],
+    ["explicar_indicador", "Q es el total cosechado"],
+    ["saludo_ayuda", "Puedo consultar"],
+    ["fuera_de_alcance", "fuera del alcance"],
+  ] as const;
+
+  for (const [intent, expected] of cases) {
+    const answer = deterministicAnswer(
+      "consulta de prueba en Finca La Ceiba",
+      summary,
+      intent,
+    );
+    assert(
+      answer.toLowerCase().includes(expected.toLowerCase()),
+      `La intención ${intent} debe producir una respuesta que contenga "${expected}".`,
+    );
+  }
+
+  const unsafeAnswer = deterministicAnswer(
+    "¿Qué dosis de urea debo aplicar?",
+    summary,
+    "insumos",
+  );
+  assert(
+    unsafeAnswer.includes("fuera del alcance"),
+    "El veto de agroquímicos debe prevailecer sobre la intención internamente válida.",
+  );
+});
+
 Deno.test("el fallback informa cuando el usuario todavía no tiene ciclos", () => {
   const summary = buildDataSummary({
     ...userData,

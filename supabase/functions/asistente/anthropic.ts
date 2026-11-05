@@ -1,8 +1,25 @@
+import type { CanonicalIntent } from "./model.ts";
 import type { AssistantRequest, DataSummary } from "./types.ts";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-sonnet-5-5";
 const REQUEST_TIMEOUT_MS = 30_000;
+
+const INTENT_GUIDANCE: Record<CanonicalIntent, string> = {
+  costo_total: "enfócate en el costo total y su composición",
+  costo_por_hectarea: "enfócate en el costo por hectárea",
+  costo_unitario: "enfócate en el costo unitario por kilogramo",
+  jornales: "enfócate en jornales y mano de obra",
+  insumos: "enfócate en insumos y su costo",
+  ingresos_ventas: "enfócate en ventas realizadas e ingresos",
+  rentabilidad: "enfócate en margen y rentabilidad sobre costos",
+  produccion_y_sin_vender: "enfócate en producción, ventas y cosecha pendiente",
+  comparar_ciclos: "compara explícitamente los ciclos solicitados",
+  clima: "enfócate en el pronóstico de la finca solicitada",
+  explicar_indicador: "explica las definiciones y fórmulas de los indicadores",
+  saludo_ayuda: "presenta brevemente las consultas disponibles",
+  fuera_de_alcance: "indica que la consulta está fuera del alcance",
+};
 
 interface AnthropicResponse {
   content?: Array<{ type?: string; text?: string }>;
@@ -34,6 +51,7 @@ function buildMessages(
 export async function askAnthropic(
   request: AssistantRequest,
   summary: DataSummary,
+  intent: CanonicalIntent,
 ): Promise<string | null> {
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
   if (!apiKey) return null;
@@ -57,6 +75,9 @@ export async function askAnthropic(
     "Los números de pesos se presentan en COP y los pesos en kg.",
     "No presentes una recomendación agronómica como una decisión definitiva.",
     "Responde de forma concisa, normalmente en un máximo de cinco frases.",
+    `La intención canónica clasificada de la consulta es "${intent}"; ${
+      INTENT_GUIDANCE[intent]
+    }.`,
   ].join(" ");
 
   try {
