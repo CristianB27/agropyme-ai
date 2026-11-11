@@ -186,7 +186,7 @@ Mientras `Qnv > 0`, los indicadores que dependen de lo vendido se rotulan **parc
 
 El cálculo rechaza áreas, cantidades o precios no positivos y rechaza ventas cuya suma `Qv` supere `Q`. PostgreSQL mantiene además las restricciones `cantidad > 0` y `precio_unitario > 0`, y los triggers diferibles `ventas_no_superan_cosecha` y `cosechas_no_superan_ventas` preservan la invariante en cada ciclo.
 
-El ciclo de regresión de maíz en Lote Norte, de 2,5 ha, valida estas fórmulas: insumos `$3.466.000`, jornales `$3.390.000`, otros costos `$2.000.000` y `C = $8.856.000`; `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e `Ir = $11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. El costo por hectárea es `$3.542.400` y el rendimiento es `4.500 kg/ha`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
+El ciclo de regresión de maíz en Lote Norte, de 2,5 ha, valida estas fórmulas: insumos `$3.466.000`, jornales `$3.390.000` (42 jornales × `$45.000` + 30 jornales × `$50.000`), otros costos `$2.000.000` y `C = $8.856.000`; `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e `Ir = $11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. El costo por hectárea es `$3.542.400` y el rendimiento es `4.500 kg/ha`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
 
 ### Anthropic y fallback
 

@@ -52,6 +52,17 @@ npm run dev
 
 Las migraciones están en `supabase/migrations/`. El esquema, RLS, catálogos y triggers se documentan en [`docs/esquema.md`](docs/esquema.md).
 
+### Datos de demostraci?n
+
+El script [`supabase/seed/demo_lote_norte.sql`](supabase/seed/demo_lote_norte.sql) crea un ciclo de ma?z de ejemplo con costos, cosecha y ventas.
+
+1. Reemplaza **?nicamente** `CORREO_DEMO` por el correo de un usuario existente en Supabase Authentication.
+2. Abre **SQL Editor ? New query**, pega el archivo completo y pulsa **Run**.
+3. El script elimina la finca demo anterior de ese usuario, por lo que puede ejecutarse varias veces sin duplicar datos.
+4. Comprueba que la consulta final devuelve costo total `$8.856.000`, cosechado `11.250 kg`, vendido `10.500 kg`, sin vender `750 kg` e ingresos realizados `$11.775.000`.
+
+El seed no modifica el esquema: `cantidad_kg` lo calcula el trigger existente y `precio_unitario` se almacena en COP/kg.
+
 ### Clima real
 
 El frontend consulta Open-Meteo directamente usando las coordenadas guardadas de cada finca:
