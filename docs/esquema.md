@@ -70,7 +70,9 @@ El trigger `calcular_cantidad_kg` se ejecuta antes de insertar o modificar `cose
 new.cantidad_kg := round(new.cantidad * factor, 4);
 ```
 
-La aplicación inserta la cantidad en la unidad elegida y omite `cantidad_kg`; PostgreSQL conserva el resultado convertido. Esto evita que el frontend y la base de datos appliquen conversiones distintas.
+La aplicación inserta la cantidad en la unidad elegida y omite `cantidad_kg`; PostgreSQL conserva el resultado convertido. Esto evita que el frontend y la base de datos apliquen conversiones distintas.
+
+En `ventas`, `precio_unitario` se almacena **siempre en COP por kg**. Si el usuario escribe el precio de otra unidad, el frontend lo convierte dividiendo por `unidades.factor_a_kg`; por ejemplo, 2 bultos de 50 kg vendidos a $55.000 por bulto se guardan como 100 kg a $1.100/kg.
 
 ## Control de ventas
 

@@ -22,8 +22,12 @@ function assertData<T>(data: T | null, context: string): T {
   return data;
 }
 
-function assertError(error: { message: string } | null): void {
-  if (error) throw new Error(error.message);
+function assertError(error: { message: string; code?: string } | null): void {
+  if (error) {
+    const databaseError = new Error(error.message) as Error & { code?: string };
+    databaseError.code = error.code;
+    throw databaseError;
+  }
 }
 
 function numberValue(value: unknown): number {
@@ -130,6 +134,14 @@ function mapManoDeObra(row: RawRow): ManoDeObra {
   };
 }
 
+function mapUnidad(row: RawRow): Unidad {
+  return {
+    id: stringValue(row.id),
+    nombre: stringValue(row.nombre),
+    factor_a_kg: numberValue(row.factor_a_kg),
+  };
+}
+
 function mapCosecha(row: RawRow, unidades: Map<string, Unidad>): Cosecha {
   const unidadId = stringValue(row.unidad_id);
   return {
@@ -168,6 +180,13 @@ export type NuevoCiclo = Omit<CicloProductivo, 'id' | 'user_id' | 'fecha_fin' | 
 export type NuevaActividad = Omit<Actividad, 'id' | 'user_id' | 'tipo_personalizado'> & {
   tipo_personalizado?: string | null;
 };
+
+export type NuevaCosecha = Pick<Cosecha, 'ciclo_id' | 'fecha' | 'cantidad' | 'unidad_id'>;
+
+export type NuevaVenta = Pick<
+  Venta,
+  'ciclo_id' | 'fecha' | 'cantidad' | 'unidad_id' | 'precio_unitario' | 'comprador'
+>;
 export type NuevoInsumo = Omit<Insumo, 'id' | 'user_id'>;
 export type NuevaManoDeObra = Omit<ManoDeObra, 'id' | 'user_id'>;
 export type NuevoProveedor = {
@@ -315,6 +334,31 @@ export async function deleteActividad(id: string): Promise<void> {
   if (data !== true) throw new Error('La actividad no existe o ya fue eliminada.');
 }
 
+export async function createCosecha(cosecha: NuevaCosecha): Promise<Cosecha> {
+  // `cantidad_kg` lo calcula el trigger `calcular_cantidad_kg` de PostgreSQL.
+  const { data, error } = await supabase.from('cosechas').insert(cosecha).select('*').single();
+  assertError(error);
+  const unidad = await supabase.from('unidades').select('*').eq('id', cosecha.unidad_id).single();
+  assertError(unidad.error);
+  return mapCosecha(data as RawRow, new Map([[cosecha.unidad_id, mapUnidad(unidad.data as RawRow)]]));
+}
+
+export async function deleteCosecha(id: string): Promise<void> {
+  await deleteById('cosechas', id);
+}
+
+export async function createVenta(venta: NuevaVenta): Promise<Venta> {
+  // `cantidad_kg` lo calcula el trigger y `precio_unitario` siempre se guarda en COP/kg.
+  const { data, error } = await supabase.from('ventas').insert(venta).select('*').single();
+  assertError(error);
+  const unidad = await supabase.from('unidades').select('*').eq('id', venta.unidad_id).single();
+  assertError(unidad.error);
+  return mapVenta(data as RawRow, new Map([[venta.unidad_id, mapUnidad(unidad.data as RawRow)]]));
+}
+
+export async function deleteVenta(id: string): Promise<void> {
+  await deleteById('ventas', id);
+}
 
 
 export async function loadAppData(): Promise<AppData> {

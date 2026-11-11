@@ -1,37 +1,49 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Package, User, Wrench, Save, Eye, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Package, User, Wrench, Save, Eye, Plus, ShoppingCart, Trash2, Wheat } from 'lucide-react';
 import { DetalleRegistroModal } from '../components/RegistroCostosModal';
 import type { RegistroSeleccionado } from '../components/RegistroCostosModal';
 import { NuevoProveedorModal } from '../components/NuevoProveedorModal';
 import { useApp } from '../context/AppContext';
-import { cicloLabel, getActividadesByCiclo } from '../utils/calculos';
+import { calcularCiclo, cicloLabel, getActividadesByCiclo } from '../utils/calculos';
+import {
+  convertirCantidadAKg,
+  convertirPrecioACopPorKg,
+  esUnidadMasa,
+  mensajeErrorCosechaVenta,
+  validarVentaContraPendiente,
+} from '../utils/cosechasVentas';
 import {
   normalizarTipoPersonalizado,
   TIPO_ACTIVIDAD_OTRA,
   TIPOS_ACTIVIDAD,
 } from '../utils/actividades';
-import { formatCOP, formatDate } from '../utils/format';
+import { formatCOP, formatDate, formatNumber } from '../utils/format';
 
-type Tab = 'insumo' | 'jornal' | 'actividad';
+type Tab = 'insumo' | 'jornal' | 'actividad' | 'cosecha' | 'venta';
 
 const UNIDADES = ['kg', 'L', 'bulto', 'unidad'];
 
-type CategoriaRegistro = 'Insumo' | 'Jornal' | 'Actividad';
+type CategoriaRegistro = 'Insumo' | 'Jornal' | 'Actividad' | 'Cosecha' | 'Venta';
 
 interface RegistroReciente {
   id: string;
+  registroId: string;
   fecha: string;
   categoria: CategoriaRegistro;
   nombre: string;
   valor: number;
-  seleccion: RegistroSeleccionado;
+  cantidad?: number;
+  unidad?: string;
+  cantidadKg?: number;
+  precioUnitario?: number;
+  seleccion?: RegistroSeleccionado;
 }
 
 export default function RegistroCostos() {
-  const { data, loading, error, refresh, selectedLoteForCost, selectedCicloForCost, setSelectedLoteForCost, setSelectedCicloForCost, addInsumo, addManoDeObra, addActividad } = useApp();
+  const { data, loading, error, refresh, selectedLoteForCost, selectedCicloForCost, setSelectedLoteForCost, setSelectedCicloForCost, addInsumo, addManoDeObra, addActividad, addCosecha, addVenta, deleteInsumo, deleteManoDeObra, deleteActividad, deleteCosecha, deleteVenta } = useApp();
   const [tab, setTab] = useState<Tab>('insumo');
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ mensaje: string; error: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [registroSeleccionado, setRegistroSeleccionado] = useState<RegistroSeleccionado | null>(null);
   const [proveedorModalAbierto, setProveedorModalAbierto] = useState(false);
@@ -121,7 +133,39 @@ export default function RegistroCostos() {
   const [actOtros, setActOtros] = useState('');
   const [actErrors, setActErrors] = useState<Record<string, boolean>>({});
 
+  // Cosecha y venta form state
+  const [cosechaCantidad, setCosechaCantidad] = useState('');
+  const [cosechaUnidadId, setCosechaUnidadId] = useState('');
+  const [ventaCantidad, setVentaCantidad] = useState('');
+  const [ventaUnidadId, setVentaUnidadId] = useState('');
+  const [ventaPrecio, setVentaPrecio] = useState('');
+  const [ventaComprador, setVentaComprador] = useState('');
+  const [cosechaVentaErrors, setCosechaVentaErrors] = useState<Record<string, boolean>>({});
+
+  const unidadesMasa = useMemo(
+    () => data.unidades.filter((unidad) => esUnidadMasa(unidad.nombre)),
+    [data.unidades],
+  );
+
+  useEffect(() => {
+    if (!cosechaUnidadId && unidadesMasa.length > 0) setCosechaUnidadId(unidadesMasa[0].id);
+  }, [cosechaUnidadId, unidadesMasa]);
+
+  useEffect(() => {
+    if (!ventaUnidadId && unidadesMasa.length > 0) setVentaUnidadId(unidadesMasa[0].id);
+  }, [ventaUnidadId, unidadesMasa]);
+
   const actividadesCiclo = cicloId ? getActividadesByCiclo(data, cicloId) : [];
+
+  const cicloActual = cicloId ? data.ciclos_productivos.find((c) => c.id === cicloId) ?? null : null;
+  const calculoCiclo = useMemo(() => {
+    if (!cicloActual) return null;
+    try {
+      return calcularCiclo(data, cicloActual);
+    } catch {
+      return null;
+    }
+  }, [data, cicloActual]);
 
   // Recent records
   const registrosRecientes = useMemo<RegistroReciente[]>(() => {
@@ -131,6 +175,7 @@ export default function RegistroCostos() {
     data.insumos.filter((i) => i.ciclo_id === cicloId).forEach((i) => {
       records.push({
         id: `insumo-${i.id}`,
+        registroId: i.id,
         fecha: i.fecha,
         categoria: 'Insumo',
         nombre: i.nombre,
@@ -142,6 +187,7 @@ export default function RegistroCostos() {
     data.mano_de_obra.filter((m) => m.ciclo_id === cicloId).forEach((m) => {
       records.push({
         id: `jornal-${m.id}`,
+        registroId: m.id,
         fecha: m.fecha,
         categoria: 'Jornal',
         nombre: m.nombre,
@@ -153,6 +199,7 @@ export default function RegistroCostos() {
     data.actividades.filter((a) => a.ciclo_id === cicloId).forEach((a) => {
       records.push({
         id: `actividad-${a.id}`,
+        registroId: a.id,
         fecha: a.fecha,
         categoria: 'Actividad',
         nombre: a.nombre,
@@ -161,11 +208,40 @@ export default function RegistroCostos() {
       });
     });
 
+    data.cosechas.filter((c) => c.ciclo_id === cicloId).forEach((c) => {
+      records.push({
+        id: `cosecha-${c.id}`,
+        registroId: c.id,
+        fecha: c.fecha,
+        categoria: 'Cosecha',
+        nombre: 'Cosecha',
+        valor: 0,
+        cantidad: c.cantidad,
+        unidad: c.unidad,
+        cantidadKg: c.cantidad_kg,
+      });
+    });
+
+    data.ventas.filter((v) => v.ciclo_id === cicloId).forEach((v) => {
+      records.push({
+        id: `venta-${v.id}`,
+        registroId: v.id,
+        fecha: v.fecha,
+        categoria: 'Venta',
+        nombre: v.comprador?.trim() || 'Venta',
+        valor: v.cantidad_kg * v.precio_unitario,
+        cantidad: v.cantidad,
+        unidad: v.unidad,
+        cantidadKg: v.cantidad_kg,
+        precioUnitario: v.precio_unitario,
+      });
+    });
+
     return records.sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [data, cicloId]);
 
-  const showToast = (message: string) => {
-    setToast(message);
+  const showToast = (message: string, error = false) => {
+    setToast({ mensaje: message, error });
     setTimeout(() => setToast(null), 3000);
   };
 
@@ -179,11 +255,51 @@ export default function RegistroCostos() {
     setActNombre(''); setActTipo(TIPOS_ACTIVIDAD[0]); setActTipoPersonalizado(''); setActDesc(''); setActOtros('');
   };
 
+  const resetCosecha = () => {
+    setCosechaCantidad('');
+    setCosechaVentaErrors({});
+  };
+
+  const resetVenta = () => {
+    setVentaCantidad('');
+    setVentaPrecio('');
+    setVentaComprador('');
+    setCosechaVentaErrors({});
+  };
+
+  const handleEliminar = async (registro: RegistroReciente) => {
+    const confirmacion = window.confirm(
+      `¿Eliminar ${registro.categoria.toLowerCase()} del ${formatDate(registro.fecha)}? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmacion) return;
+
+    try {
+      if (registro.categoria === 'Cosecha') {
+        await deleteCosecha(registro.registroId);
+      } else if (registro.categoria === 'Venta') {
+        await deleteVenta(registro.registroId);
+      } else if (registro.categoria === 'Insumo') {
+        await deleteInsumo(registro.registroId);
+      } else if (registro.categoria === 'Jornal') {
+        await deleteManoDeObra(registro.registroId);
+      } else {
+        await deleteActividad(registro.registroId);
+      }
+      showToast(`${registro.categoria} eliminada correctamente`);
+    } catch (caughtError) {
+      showToast(mensajeErrorCosechaVenta(caughtError, 'No se pudo eliminar el registro'), true);
+    }
+  };
+
   const handleGuardar = async () => {
     if (!cicloId || saving) return;
 
     try {
       setSaving(true);
+      if (!fecha) {
+        showToast('La fecha es obligatoria', true);
+        return;
+      }
       if (tab === 'insumo') {
       const e = {
         nombre: !insNombre.trim(),
@@ -241,16 +357,62 @@ export default function RegistroCostos() {
         otros_costos: actOtros ? Number(actOtros) : 0,
       });
       resetActividad();
+    } else if (tab === 'cosecha') {
+      const cantidad = Number(cosechaCantidad);
+      const e = {
+        cantidad: cosechaCantidad === '' || !Number.isFinite(cantidad) || cantidad <= 0,
+        unidad: !cosechaUnidadId,
+      };
+      setCosechaVentaErrors(e);
+      if (Object.values(e).some(Boolean)) return;
+      await addCosecha({
+        ciclo_id: cicloId,
+        fecha,
+        cantidad,
+        unidad_id: cosechaUnidadId,
+      });
+      resetCosecha();
+    } else if (tab === 'venta') {
+      const cantidad = Number(ventaCantidad);
+      const precioPorUnidad = Number(ventaPrecio);
+      const unidad = unidadesMasa.find((item) => item.id === ventaUnidadId);
+      const e = {
+        cantidad: ventaCantidad === '' || !Number.isFinite(cantidad) || cantidad <= 0,
+        unidad: !unidad,
+        precio: ventaPrecio === '' || !Number.isFinite(precioPorUnidad) || precioPorUnidad <= 0,
+      };
+      setCosechaVentaErrors(e);
+      if (Object.values(e).some(Boolean)) return;
+      if (!unidad) return;
+
+      const cantidadKg = convertirCantidadAKg(cantidad, unidad.factor_a_kg);
+      const pendienteKg = calculoCiclo?.Qnv ?? 0;
+      const errorValidacion = validarVentaContraPendiente(cantidadKg, pendienteKg);
+      if (errorValidacion) {
+        showToast(errorValidacion, true);
+        return;
+      }
+
+      await addVenta({
+        ciclo_id: cicloId,
+        fecha,
+        cantidad,
+        unidad_id: unidad.id,
+        precio_unitario: convertirPrecioACopPorKg(precioPorUnidad, unidad.factor_a_kg),
+        comprador: ventaComprador.trim() || null,
+      });
+      resetVenta();
     }
       showToast('Registro guardado correctamente');
     } catch (caughtError) {
-      showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo guardar el registro');
+      showToast(
+        mensajeErrorCosechaVenta(caughtError, caughtError instanceof Error ? caughtError.message : 'No se pudo guardar el registro'),
+        true,
+      );
     } finally {
       setSaving(false);
     }
   };
-
-  const cicloActual = cicloId ? data.ciclos_productivos.find((c) => c.id === cicloId) : null;
 
   if (loading) {
     return <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">Cargando los registros…</div>;
@@ -269,7 +431,7 @@ export default function RegistroCostos() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-gray-900">Registro de Costos</h2>
-        <p className="text-sm text-gray-500 mt-1">Registra insumos, jornales y actividades</p>
+        <p className="text-sm text-gray-500 mt-1">Registra insumos, jornales, actividades, cosechas y ventas</p>
       </div>
 
       {/* Common fields */}
@@ -320,6 +482,8 @@ export default function RegistroCostos() {
             { id: 'insumo', label: 'Insumo', icon: Package },
             { id: 'jornal', label: 'Jornal', icon: User },
             { id: 'actividad', label: 'Actividad', icon: Wrench },
+            { id: 'cosecha', label: 'Cosecha', icon: Wheat },
+            { id: 'venta', label: 'Venta', icon: ShoppingCart },
           ] as { id: Tab; label: string; icon: typeof Package }[]).map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -339,6 +503,109 @@ export default function RegistroCostos() {
         </div>
 
         <div className="p-4 md:p-6 space-y-4">
+          {/* Cosecha tab */}
+          {tab === 'cosecha' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="cosecha-cantidad" className="block text-sm font-medium text-gray-700 mb-1">Cantidad cosechada</label>
+                  <input
+                    id="cosecha-cantidad"
+                    value={cosechaCantidad}
+                    onChange={(event) => setCosechaCantidad(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum"
+                    placeholder="Ej. 11250"
+                  />
+                  {cosechaVentaErrors.cantidad && <p className="mt-1 text-xs text-red-500">La cantidad debe ser mayor que cero</p>}
+                </div>
+                <div>
+                  <label htmlFor="cosecha-unidad" className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                  <select
+                    id="cosecha-unidad"
+                    value={cosechaUnidadId}
+                    onChange={(event) => setCosechaUnidadId(event.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                  >
+                    {unidadesMasa.map((unidad) => <option key={unidad.id} value={unidad.id}>{unidad.nombre}</option>)}
+                  </select>
+                  {cosechaVentaErrors.unidad && <p className="mt-1 text-xs text-red-500">Selecciona una unidad de masa</p>}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">Loskilogramos se calculan automáticamente con el factor de la unidad.</p>
+            </>
+          )}
+
+          {/* Venta tab */}
+          {tab === 'venta' && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="venta-cantidad" className="block text-sm font-medium text-gray-700 mb-1">Cantidad vendida</label>
+                  <input
+                    id="venta-cantidad"
+                    value={ventaCantidad}
+                    onChange={(event) => setVentaCantidad(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum"
+                    placeholder="Ej. 1000"
+                  />
+                  {cosechaVentaErrors.cantidad && <p className="mt-1 text-xs text-red-500">La cantidad debe ser mayor que cero</p>}
+                </div>
+                <div>
+                  <label htmlFor="venta-unidad" className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
+                  <select
+                    id="venta-unidad"
+                    value={ventaUnidadId}
+                    onChange={(event) => setVentaUnidadId(event.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                  >
+                    {unidadesMasa.map((unidad) => <option key={unidad.id} value={unidad.id}>{unidad.nombre}</option>)}
+                  </select>
+                  {cosechaVentaErrors.unidad && <p className="mt-1 text-xs text-red-500">Selecciona una unidad de masa</p>}
+                </div>
+                <div>
+                  <label htmlFor="venta-precio" className="block text-sm font-medium text-gray-700 mb-1">Precio por unidad (COP)</label>
+                  <input
+                    id="venta-precio"
+                    value={ventaPrecio}
+                    onChange={(event) => setVentaPrecio(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum"
+                    placeholder="Ej. 55000"
+                  />
+                  {cosechaVentaErrors.precio && <p className="mt-1 text-xs text-red-500">El precio debe ser mayor que cero</p>}
+                  {(() => {
+                    const unidad = unidadesMasa.find((item) => item.id === ventaUnidadId);
+                    const precio = Number(ventaPrecio);
+                    if (!unidad || !Number.isFinite(precio) || precio <= 0) return null;
+                    return (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Se guardará como {formatCOP(convertirPrecioACopPorKg(precio, unidad.factor_a_kg))} por kg.
+                      </p>
+                    );
+                  })()}
+                </div>
+                <div>
+                  <label htmlFor="venta-comprador" className="block text-sm font-medium text-gray-700 mb-1">Comprador (opcional)</label>
+                  <input
+                    id="venta-comprador"
+                    value={ventaComprador}
+                    onChange={(event) => setVentaComprador(event.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                    placeholder="Ej. Mercado local"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Insumo tab */}
           {tab === 'insumo' && (
             <>
@@ -497,6 +764,12 @@ export default function RegistroCostos() {
             </>
           )}
 
+          {calculoCiclo && (
+            <div className="rounded-lg bg-[#2E7D32]/5 px-4 py-3 text-sm text-gray-700">
+              Cosechado <strong>{formatNumber(calculoCiclo.Q)} kg</strong> · Vendido <strong>{formatNumber(calculoCiclo.Qv)} kg</strong> · Sin vender <strong>{formatNumber(calculoCiclo.Qnv)} kg</strong>
+            </div>
+          )}
+
           <button
             onClick={handleGuardar}
             disabled={!cicloId || saving}
@@ -517,37 +790,65 @@ export default function RegistroCostos() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Tipo</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Fecha</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Categoría</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Nombre</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Valor</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Cantidad</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Kg</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Precio por kg</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Ingreso</th>
                   <th className="text-right px-4 py-3 font-semibold text-gray-700 text-xs uppercase tracking-wider">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {registrosRecientes.map((r) => (
                   <tr key={r.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-600 tnum">{formatDate(r.fecha)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         r.categoria === 'Insumo' ? 'bg-blue-100 text-blue-800' :
                         r.categoria === 'Jornal' ? 'bg-amber-100 text-amber-800' :
-                        'bg-purple-100 text-purple-800'
+                        r.categoria === 'Actividad' ? 'bg-purple-100 text-purple-800' :
+                        r.categoria === 'Cosecha' ? 'bg-emerald-100 text-emerald-800' :
+                        'bg-cyan-100 text-cyan-800'
                       }`}>
                         {r.categoria}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{r.nombre}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900 tnum">{formatCOP(r.valor)}</td>
+                    <td className="px-4 py-3 text-gray-600 tnum">{formatDate(r.fecha)}</td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {r.cantidad !== undefined && r.unidad ? `${formatNumber(r.cantidad)} ${r.unidad}` : r.nombre}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700 tnum">
+                      {r.cantidadKg !== undefined ? formatNumber(r.cantidadKg) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700 tnum">
+                      {r.precioUnitario !== undefined ? formatCOP(r.precioUnitario) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-gray-900 tnum">
+                      {r.categoria === 'Venta' ? formatCOP(r.valor) : r.categoria === 'Cosecha' ? '—' : formatCOP(r.valor)}
+                    </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setRegistroSeleccionado(r.seleccion)}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-1"
-                      >
-                        <Eye className="h-4 w-4" />
-                        Ver más detalles
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-2">
+                        {r.seleccion && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (r.seleccion) setRegistroSeleccionado(r.seleccion);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-1"
+                          >
+                            <Eye className="h-4 w-4" />
+                            Ver más
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleEliminar(r)}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-1"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -580,9 +881,9 @@ export default function RegistroCostos() {
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50">
-          <div className="flex items-center gap-2 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg">
-            <CheckCircle2 className="w-5 h-5 text-green-400" />
-            <span className="text-sm font-medium">{toast}</span>
+          <div className={`flex items-center gap-2 text-white px-4 py-3 rounded-lg shadow-lg ${toast.error ? 'bg-red-700' : 'bg-gray-900'}`}>
+            {toast.error ? <AlertTriangle className="w-5 h-5 text-red-100" /> : <CheckCircle2 className="w-5 h-5 text-green-400" />}
+            <span className="text-sm font-medium">{toast.mensaje}</span>
           </div>
         </div>
       )}
