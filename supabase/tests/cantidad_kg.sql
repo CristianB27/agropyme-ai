@@ -10,9 +10,9 @@ insert into public.fincas (id, user_id, nombre, municipio, latitud, longitud)
 values ('cccccccc-0000-4000-8000-000000000001', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
         'Finca de prueba de conversión', 'Prueba', 1, -74);
 
-insert into public.lotes (id, user_id, finca_id, nombre, area_ha, municipio)
+insert into public.lotes (id, user_id, finca_id, nombre, area_ha)
 values ('cccccccc-0000-4000-8000-000000000002', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        'cccccccc-0000-4000-8000-000000000001', 'Lote de prueba de conversión', 1, 'Prueba');
+        'cccccccc-0000-4000-8000-000000000001', 'Lote de prueba de conversión', 1);
 
 insert into public.ciclos (id, user_id, lote_id, cultivo_id, fecha_inicio, estado)
 values ('cccccccc-0000-4000-8000-000000000003', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',

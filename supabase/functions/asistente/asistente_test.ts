@@ -225,24 +225,14 @@ const ejemploUserData: UserData = {
     cantidad: 1,
     costo_unitario: 3_466_000,
   }],
-  manoDeObra: [
-    {
-      id: "jornal-ciclo-1",
-      ciclo_id: "ciclo-maiz",
-      actividad_id: "actividad-siembra",
-      fecha: "2026-01-03",
-      num_jornales: 42,
-      valor_jornal: 45_000,
-    },
-    {
-      id: "jornal-ciclo-2",
-      ciclo_id: "ciclo-maiz",
-      actividad_id: "actividad-siembra",
-      fecha: "2026-01-04",
-      num_jornales: 30,
-      valor_jornal: 50_000,
-    },
-  ],
+  manoDeObra: [{
+    id: "jornal-ciclo",
+    ciclo_id: "ciclo-maiz",
+    actividad_id: "actividad-siembra",
+    fecha: "2026-01-03",
+    num_jornales: 22.6,
+    valor_jornal: 150_000,
+  }],
   cosechas: [{
     id: "cosecha-ciclo",
     ciclo_id: "ciclo-maiz",

@@ -1,21 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AppData, Finca, Lote, CicloProductivo, Insumo, ManoDeObra, Actividad, Proveedor, Cosecha, Venta } from '../types';
+import type { AppData, Finca, Lote, CicloProductivo, Insumo, ManoDeObra, Actividad, Proveedor } from '../types';
 import {
   createActividad,
   createCiclo,
-  createCosecha,
   createFinca,
   createInsumo,
   createLote,
   createManoDeObra,
   createProveedor,
-  createVenta,
   deleteActividad as deleteActividadRecord,
-  deleteCosecha as deleteCosechaRecord,
   deleteInsumo as deleteInsumoRecord,
   deleteLote as deleteLoteRecord,
   deleteManoDeObra as deleteManoDeObraRecord,
-  deleteVenta as deleteVentaRecord,
   loadAppData,
   updateActividad as updateActividadRecord,
   updateFincaCodMun,
@@ -23,14 +19,12 @@ import {
   updateLote as updateLoteRecord,
   updateManoDeObra as updateManoDeObraRecord,
   type NuevaActividad,
-  type NuevaCosecha,
   type NuevoCiclo,
   type NuevaFinca,
   type NuevoInsumo,
   type NuevoLote,
   type NuevaManoDeObra,
   type NuevoProveedor,
-  type NuevaVenta,
 } from '../services/agropyme';
 import { loadClimaForFincas } from '../services/clima';
 
@@ -66,10 +60,6 @@ interface AppContextValue {
   addInsumo: (insumo: NuevoInsumo) => Promise<Insumo>;
   addManoDeObra: (jornal: NuevaManoDeObra) => Promise<ManoDeObra>;
   addActividad: (actividad: NuevaActividad) => Promise<Actividad>;
-  addCosecha: (cosecha: NuevaCosecha) => Promise<Cosecha>;
-  addVenta: (venta: NuevaVenta) => Promise<Venta>;
-  deleteCosecha: (id: string) => Promise<void>;
-  deleteVenta: (id: string) => Promise<void>;
   updateInsumo: (id: string, insumo: NuevoInsumo) => Promise<Insumo>;
   deleteInsumo: (id: string) => Promise<void>;
   updateManoDeObra: (id: string, jornal: NuevaManoDeObra) => Promise<ManoDeObra>;
@@ -226,28 +216,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
-  const addCosecha = useCallback(async (cosecha: NuevaCosecha) => {
-    const created = await createCosecha(cosecha);
-    setData((previous) => ({ ...previous, cosechas: [...previous.cosechas, created] }));
-    return created;
-  }, []);
-
-  const addVenta = useCallback(async (venta: NuevaVenta) => {
-    const created = await createVenta(venta);
-    setData((previous) => ({ ...previous, ventas: [...previous.ventas, created] }));
-    return created;
-  }, []);
-
-  const deleteCosecha = useCallback(async (id: string) => {
-    await deleteCosechaRecord(id);
-    setData((previous) => ({ ...previous, cosechas: previous.cosechas.filter((item) => item.id !== id) }));
-  }, []);
-
-  const deleteVenta = useCallback(async (id: string) => {
-    await deleteVentaRecord(id);
-    setData((previous) => ({ ...previous, ventas: previous.ventas.filter((item) => item.id !== id) }));
-  }, []);
-
   const addProveedor = useCallback(async (proveedor: NuevoProveedor) => {
     const created = await createProveedor(proveedor);
     setData((previous) => ({ ...previous, proveedores: [...previous.proveedores, created] }));
@@ -312,7 +280,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     data, loading, climaLoading, error, refresh, refreshClima: refreshClimaForAll,
     addFinca, updateFincaCodMun: updateFincaCodMunCallback, addLote, updateLote, deleteLote, addCiclo,
     addProveedor, addInsumo, addManoDeObra, addActividad,
-    addCosecha, addVenta, deleteCosecha, deleteVenta,
     updateInsumo, deleteInsumo, updateManoDeObra, deleteManoDeObra,
     updateActividad, deleteActividad,
     selectedLoteForCost, selectedCicloForCost,
@@ -320,8 +287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }), [
     data, loading, climaLoading, error, refresh, refreshClimaForAll,
     addFinca, updateFincaCodMunCallback, addLote, updateLote, deleteLote, addCiclo, addProveedor,
-    addInsumo, addManoDeObra, addActividad, addCosecha, addVenta,
-    deleteCosecha, deleteVenta, updateInsumo, deleteInsumo,
+    addInsumo, addManoDeObra, addActividad, updateInsumo, deleteInsumo,
     updateManoDeObra, deleteManoDeObra, updateActividad, deleteActividad,
     selectedLoteForCost, selectedCicloForCost,
   ]);
