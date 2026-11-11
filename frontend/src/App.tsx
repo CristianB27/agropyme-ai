@@ -41,7 +41,7 @@ function App() {
     <ProtectedRoute>
       <AppProvider>
         <Layout current={screen} onNavigate={navigate}>
-          {screen === 'dashboard' && <Dashboard />}
+          {screen === 'dashboard' && <Dashboard onNavigate={navigate} />}
           {screen === 'lotes' && <MisLotes onNavigate={navigate} />}
           {screen === 'costos' && <RegistroCostos />}
           {screen === 'asistente' && <AsistenteIA />}

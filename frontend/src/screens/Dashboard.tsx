@@ -8,6 +8,7 @@ import {
   Droplets, Thermometer, ShoppingCart, Package, Info, Calculator, ChevronDown, RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import type { ScreenId } from '../components/Layout';
 import ReferenciaRendimientoMaizCard from '../components/ReferenciaRendimientoMaizCard';
 import type { ClimaFinca, Finca } from '../types';
 import {
@@ -127,7 +128,11 @@ function ClimaCard({ finca, clima, loading, onRetry }: ClimaCardProps) {
   );
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  onNavigate: (id: ScreenId) => void;
+}
+
+export default function Dashboard({ onNavigate }: DashboardProps) {
   const { data, loading, climaLoading, error, refresh, refreshClima } = useApp();
   const [selectedCicloId, setSelectedCicloId] = useState<string>('');
   const [precioEstimado, setPrecioEstimado] = useState('1150');
@@ -170,6 +175,13 @@ export default function Dashboard() {
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
           <h3 className="text-lg font-bold text-gray-900">Aún no tienes ciclos productivos</h3>
           <p className="mt-2 text-sm text-gray-500">Crea una finca, un lote y un ciclo en “Mis Lotes” para ver tu resumen financiero.</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('lotes')}
+            className="mt-4 rounded-lg bg-[#2E7D32] px-4 py-2 text-sm font-semibold text-white hover:bg-[#256628] focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-2"
+          >
+            Ir a Mis Lotes
+          </button>
         </div>
         <ClimaCard
           finca={finca}
@@ -221,6 +233,9 @@ export default function Dashboard() {
       icon: ShoppingCart,
       color: '#0277BD',
       parcial: calc.esParcial,
+      hint: calc.Qv === 0
+        ? 'Registra una venta en Registro de Costos para calcular los ingresos realizados.'
+        : undefined,
     },
     {
       label: 'Rentabilidad sobre costos',
@@ -333,6 +348,9 @@ export default function Dashboard() {
               </div>
               <p className="text-xs text-gray-500 mb-1">{ind.label}</p>
               <p className="text-lg md:text-xl font-bold text-gray-900 tnum leading-tight">{ind.value}</p>
+              {'hint' in ind && ind.hint && (
+                <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{ind.hint}</p>
+              )}
             </div>
           );
         })}
