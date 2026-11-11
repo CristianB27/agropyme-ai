@@ -200,11 +200,13 @@ La API key se lee exclusivamente desde `ANTHROPIC_API_KEY` en el entorno de Edge
 
 ### Pruebas y despliegue
 
-Las pruebas unitarias de resumen y fallback se ejecutan con:
+Las pruebas unitarias de resumen, fallback y paridad del modelo se ejecutan con:
 
 ```powershell
-npx --yes deno test supabase/functions/asistente/asistente_test.ts
+npx --yes deno test --allow-read supabase/functions/asistente/asistente_test.ts supabase/functions/asistente/model_test.ts
 ```
+
+La suite completa comprise 15 pruebas: 12 del asistente y 3 del modelo. El permiso `--allow-read` permite cargar el fixture JSON de paridad.
 
 La función se publica sin Docker mediante empaquetado server-side:
 

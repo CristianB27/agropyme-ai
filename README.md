@@ -118,13 +118,20 @@ npm test
 cd ..
 npx --yes deno fmt --check supabase/functions/asistente
 npx --yes deno lint supabase/functions/asistente
-npx --yes deno check supabase/functions/asistente/index.ts supabase/functions/asistente/asistente_test.ts
-npx --yes deno test supabase/functions/asistente/asistente_test.ts
+npx --yes deno check supabase/functions/asistente/index.ts supabase/functions/asistente/asistente_test.ts supabase/functions/asistente/model_test.ts
+npx --yes deno test --allow-read supabase/functions/asistente/asistente_test.ts supabase/functions/asistente/model_test.ts
+
+# Smoke test de cosechas y ventas (requiere proyecto Supabase enlazado)
+cd frontend
+npx vite-node scripts/smoke-cosechas-ventas.mjs
+cd ..
 
 # SQL (todas las pruebas se revierten al terminar)
 .\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\rls_dos_usuarios.sql
 .\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\cantidad_kg.sql
 ```
+
+Resultados verificados en el avance 5: 25/25 pruebas Vitest, 15/15 pruebas Deno y smoke test de cosechas/ventas aprobado con limpieza de datos verificada.
 
 ### Pendientes de operación
 
