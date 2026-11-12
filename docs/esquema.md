@@ -1,6 +1,6 @@
 # Esquema de AgroPyme AI
 
-Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261101150000_editar_eliminar_lote.sql`](../supabase/migrations/20261101150000_editar_eliminar_lote.sql).
+Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad son las migraciones de [`supabase/migrations/`](../supabase/migrations/), desde [`20261030210000_esquema_inicial.sql`](../supabase/migrations/20261030210000_esquema_inicial.sql) hasta [`20261112120000_clasificar_produccion_y_cierre.sql`](../supabase/migrations/20261112120000_clasificar_produccion_y_cierre.sql).
 
 ## Convenciones
 
@@ -16,13 +16,14 @@ Este documento describe el esquema aplicado en Supabase. Las fuentes de verdad s
 |---|---|---|
 | `fincas` | `nombre`, `municipio`, `cod_mun`, `latitud`, `longitud` | — |
 | `lotes` | `finca_id`, `nombre`, `area_ha > 0`, `municipio`, `cod_mun?` | Finca `on delete cascade` |
-| `ciclos` | `lote_id`, `cultivo_id`, `fecha_inicio`, `fecha_fin`, `estado` | Lote `cascade`; cultivo `restrict` |
+| `ciclos` | `lote_id`, `cultivo_id`, `fecha_inicio`, `fecha_fin`, `estado` (`activo`/`finalizado`); un ciclo finalizado exige `fecha_fin` | Lote `cascade`; cultivo `restrict` |
 | `proveedores` | `nombre`, `contacto` | — |
 | `actividades` | `ciclo_id`, `nombre`, `tipo`, `tipo_personalizado?`, `fecha`, `descripcion?`, `otros_costos >= 0` | Ciclo `cascade` |
 | `insumos` | `ciclo_id`, `actividad_id?`, `proveedor_id?`, fecha, `nombre`, `descripcion?`, cantidad, unidad y costo | Ciclo `cascade`; actividad/proveedor `restrict` |
 | `mano_de_obra` | `ciclo_id`, `actividad_id?`, fecha, `nombre`, `descripcion?`, jornales y valor | Ciclo `cascade`; actividad `restrict` |
-| `cosechas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg > 0` | Ciclo `cascade`; unidad `restrict` |
-| `ventas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg`, precio y comprador | Ciclo `cascade`; unidad `restrict` |
+| `cosechas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg > 0`, `calidad`, `descripcion?` | Ciclo `cascade`; unidad `restrict` |
+| `ventas` | `ciclo_id`, fecha, cantidad, `unidad_id`, `cantidad_kg`, `precio_unitario` (COP/kg), `comprador?`, `calidad`, `tipo_comprador?`, `estado_pago` | Ciclo `cascade`; unidad `restrict` |
+| `salidas_produccion` | `ciclo_id`, fecha, `tipo`, cantidad, `unidad_id`, `cantidad_kg > 0`, `descripcion?` | Ciclo `cascade`; unidad `restrict` |
 
 Las relaciones incluyen `user_id`. Esto impide, además del RLS, vincular un lote a una finca de otro usuario o una actividad de otro ciclo.
 
@@ -32,10 +33,21 @@ Los registros de insumos, actividades y mano de obra mantienen separados el camp
 
 Cuando el tipo general de una actividad es `Otra`, el campo opcional `tipo_personalizado` guarda el nombre específico que escribió el usuario. La base de datos exige que este valor no esté vacío y que sólo exista cuando `tipo = 'Otra'`; si el usuario cambia a un tipo estándar, el valor se almacena como `NULL`.
 
+### Clasificación de la producción
+
+| Campo | Valores | Uso |
+|---|---|---|
+| `cosechas.calidad`, `ventas.calidad` | `primera`, `segunda`, `tercera`, `sin_clasificar` (por defecto) | Comparar cuánto se produjo y a qué precio se vendió cada calidad |
+| `ventas.tipo_comprador` | `intermediario`, `cooperativa`, `plaza_mercado`, `industria`, `consumidor_final`, `otro` o `NULL` | Saber a qué canal conviene vender |
+| `ventas.estado_pago` | `pagado` (por defecto), `por_cobrar` | Separar lo cobrado de lo fiado |
+| `salidas_produccion.tipo` | `autoconsumo`, `alimento_animal`, `semilla`, `donacion`, `perdida` | Producción que sale sin venderse |
+
+Las salidas existen porque un pequeño productor rara vez vende todo: parte se consume en el hogar, se da a los animales, se guarda como semilla o se pierde. Sin registrarlas, ese producto quedaría como "pendiente de venta" para siempre, el ciclo nunca se cerraría y la proyección lo valoraría a precio de mercado.
+
 ## Catálogos compartidos
 
 - `cultivos`: Maíz, Yuca, Ñame y Arroz.
-- `unidades`: kg, bulto, tonelada, unidad y litro, con `factor_a_kg`.
+- `unidades`: kg, arroba (12,5 kg), bulto (50 kg), tonelada, unidad y litro, con `factor_a_kg` y `es_masa`. Sólo las unidades de peso (`es_masa = true`) se aceptan en cosechas, ventas y salidas; `unidad` y `litro` se conservan para insumos.
 
 Solo los usuarios autenticados pueden consultar estos catálogos. No tienen políticas de escritura para usuarios normales.
 
@@ -62,9 +74,13 @@ La función `public.eliminar_lote(p_lote_id uuid)` elimina un lote y todos sus r
 
 La función usa `security invoker`, por lo que las políticas RLS siguen aplicando: sólo se puede eliminar un lote del usuario autenticado. La interfaz de Mis Lotes muestra un diálogo de confirmación, explica que la acción no se puede deshacer y presenta el número de registros afectados antes de solicitar la confirmación.
 
+## Eliminación segura de ciclos y fincas
+
+`public.eliminar_ciclo(p_ciclo_id uuid)` y `public.eliminar_finca(p_finca_id uuid)` siguen el mismo patrón que `eliminar_lote`: desvinculan insumos y jornales de sus actividades y luego eliminan en cascada. Usan `security invoker`, de modo que RLS sigue aplicando.
+
 ## Conversión de cantidades a kg
 
-El trigger `calcular_cantidad_kg` se ejecuta antes de insertar o modificar `cosechas` y `ventas`. Consulta `unidades.factor_a_kg` y escribe:
+El trigger `calcular_cantidad_kg` se ejecuta antes de insertar o modificar `cosechas`, `ventas` y `salidas_produccion`. Rechaza con error `22023` las unidades que no son de peso. Consulta `unidades.factor_a_kg` y escribe:
 
 ```sql
 new.cantidad_kg := round(new.cantidad * factor, 4);
@@ -74,12 +90,12 @@ La aplicación inserta la cantidad en la unidad elegida y omite `cantidad_kg`; P
 
 ## Control de ventas
 
-Los triggers diferibles `ventas_no_superan_cosecha` y `cosechas_no_superan_ventas` comparan, por ciclo:
+Los triggers diferibles `ventas_no_superan_cosecha`, `salidas_no_superan_cosecha` y `cosechas_no_superan_ventas` comparan, por ciclo:
 
-- total vendido en kg;
+- total vendido más total de salidas sin venta, en kg;
 - total cosechado en kg.
 
-Si el total vendido supera al cosechado, PostgreSQL rechaza la operación con error `23514`. La validación también se ejecuta al cambiar o eliminar cosechas, para conservar la invariante.
+Si lo vendido más las salidas supera lo cosechado, PostgreSQL rechaza la operación con error `23514`. La validación también se ejecuta al cambiar o eliminar cosechas, para conservar la invariante.
 
 ## Prueba de aislamiento
 
@@ -121,6 +137,12 @@ El script [`supabase/tests/editar_eliminar_lote.sql`](../supabase/tests/editar_e
 
 La prueba utiliza una transacción y termina con `ROLLBACK`, por lo que no deja datos de prueba en el proyecto.
 
+El script [`supabase/tests/salidas_y_clasificacion.sql`](../supabase/tests/salidas_y_clasificacion.sql) comprueba la conversión de arrobas, la clasificación de cosechas y ventas, el rechazo de salidas que superan la cosecha y de unidades que no son de peso, la fecha obligatoria al finalizar un ciclo y el borrado con `eliminar_ciclo` y `eliminar_finca`:
+
+```powershell
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\salidas_y_clasificacion.sql
+```
+
 ## Clima por finca
 
 El frontend consulta `https://api.open-meteo.com/v1/forecast` con la latitud y longitud de cada finca. El resultado se conserva en memoria durante 30 minutos y la clave incluye el UUID y las coordenadas para invalidarlo si la ubicación cambia.
@@ -152,7 +174,7 @@ La función exige un JWT de Supabase. `supabase/config.toml` mantiene `verify_jw
 
 `data.ts` crea un cliente Supabase con la clave pública y el JWT del usuario como rol `authenticated`; no usa `service_role`. Lee por separado:
 
-- `fincas`, `lotes`, `ciclos`, `actividades`, `insumos`, `mano_de_obra`, `cosechas` y `ventas`;
+- `fincas`, `lotes`, `ciclos`, `actividades`, `insumos`, `mano_de_obra`, `cosechas`, `ventas` y `salidas_produccion`;
 - el catálogo compartido `cultivos`.
 
 Las tablas privadas aplican RLS, por lo que cada consulta queda limitada a `auth.uid() = user_id`. Un token válido de otro usuario no puede consultar los datos del usuario que realiza la pregunta.
@@ -165,14 +187,19 @@ Para cada ciclo se usan estas magnitudes:
 
 - `Q`: total cosechado en kg;
 - `Qv`: total vendido en kg;
-- `Qnv = Q − Qv`: cosecha pendiente de venta en kg;
+- `Qperdida`: salidas de tipo pérdida en kg;
+- `QusoPropio`: autoconsumo, alimento animal, semilla y donación en kg;
+- `Qnv = Q − Qv − Qperdida − QusoPropio`: producción en bodega, pendiente de venta;
 - `C = costo de insumos + costo de jornales + otros costos`: costo total;
 - `Ir = suma(cantidad_kg × precio_unitario)`: ingresos realizados.
 
 Los indicadores se calculan así:
 
-- costo unitario: `C / Q`;
-- costo de lo vendido: `(C / Q) × Qv`;
+- costo unitario: `C / (Q − Qperdida)` (las pérdidas encarecen cada kg aprovechable; sin pérdidas equivale a `C / Q`);
+- costo de lo vendido: `costo unitario × Qv`;
+- costo del uso propio: `costo unitario × QusoPropio` (informativo);
+- ingresos por cobrar: suma de las ventas con `estado_pago = por_cobrar` (están incluidas en `Ir`);
+- precio promedio de venta: `Ir / Qv` (es el precio sugerido para la proyección);
 - margen realizado: `Ir − costo de lo vendido`;
 - margen sobre ventas: `margen realizado / Ir`;
 - rentabilidad sobre costos: `margen realizado / costo de lo vendido`;
@@ -186,38 +213,32 @@ El cálculo rechaza áreas, cantidades o precios no positivos y rechaza ventas c
 
 El ciclo de regresión de maíz en Lote Norte, de 2,5 ha, valida estas fórmulas: insumos `$3.466.000`, jornales `$3.390.000`, otros costos `$2.000.000` y `C = $8.856.000`; `Q = 11.250 kg`, `Qv = 10.500 kg`, `Qnv = 750 kg` e `Ir = $11.775.000`. El costo unitario es `$787,20/kg`, el costo de lo vendido es `$8.265.600`, el margen realizado es `$3.509.400`, el margen sobre ventas es `29,8 %` y la rentabilidad sobre costos es `42,5 %`. El costo por hectárea es `$3.542.400` y el rendimiento es `4.500 kg/ha`. Si los 750 kg pendientes se venden a `$1.150/kg`, el resultado proyectado es `$3.781.500` y se presenta como estimación.
 
-### Anthropic y fallback
+### Clasificador local y respuesta determinista
 
-`anthropic.ts` llama server-side a la Messages API de Anthropic con timeout de 30 segundos. El modelo por defecto es el alias oficial activo `claude-sonnet-5-5` y puede cambiarse mediante el secreto `ANTHROPIC_MODEL`.
+El asistente no usa un modelo de lenguaje externo. Para cada pregunta:
 
-La API key se lee exclusivamente desde `ANTHROPIC_API_KEY` en el entorno de Edge Functions. Nunca se expone al bundle de Vite ni se incluye en Git.
+1. un clasificador local (regresión logística exportada a TypeScript en `model.ts` y `model_data.ts`) elige una de 13 intenciones;
+2. un resolver acotado corrige casos conocidos y un veto server-side rechaza pedidos de recomendaciones o dosis de agroquímicos;
+3. `fallback.ts` construye la respuesta con las cifras del resumen real del usuario y devuelve `source: "fallback"`.
 
-- Si existe la clave y Anthropic responde, la respuesta usa `source: "anthropic"`.
-- Si falta la clave o Anthropic falla, `fallback.ts` calcula una respuesta determinística según la intención (costos, rentabilidad, jornales, insumos, clima o resumen) y devuelve `source: "fallback"`.
-- En ambos casos, las cifras provienen del consolidado de datos reales del usuario autenticado. No hay mocks en producción. El frontend etiqueta la respuesta determinística y muestra el aviso de fallback.
+`anthropic.ts` es código heredado: sin `ANTHROPIC_API_KEY` no hace ninguna llamada externa y, por decisión del proyecto, esa clave **no** se configura.
 
 ### Pruebas y despliegue
 
-Las pruebas unitarias de resumen y fallback se ejecutan con:
+Las pruebas de resumen, fallback, paridad con el frontend y modelo se ejecutan con:
 
 ```powershell
-npx --yes deno test supabase/functions/asistente/asistente_test.ts
+npx --yes deno test --allow-read supabase/functions/asistente
 ```
 
 La función se publica sin Docker mediante empaquetado server-side:
 
 ```powershell
-.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref TU_PROJECT_REF --use-api
-```
-
-La configuración de la clave se realiza como secreto:
-
-```powershell
-.\frontend\node_modules\.bin\supabase.cmd secrets set ANTHROPIC_API_KEY=CLAVE_DE_ANTHROPIC
+.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref uedjzflmzpyzriyjxhyd --use-api
 ```
 
 El estado desplegado de la función puede comprobarse con:
 
 ```powershell
-.\frontend\node_modules\.bin\supabase.cmd functions list --project-ref TU_PROJECT_REF
+.\frontend\node_modules\.bin\supabase.cmd functions list --project-ref uedjzflmzpyzriyjxhyd
 ```

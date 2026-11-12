@@ -1,354 +1,303 @@
-# AGROPYME TEST
+# AgroPyme AI
 
-El repositorio contiene dos componentes relacionados:
+Aplicación web para que pequeños y medianos productores agrícolas sepan **cuánto les cuesta producir, cuánto venden y si ganan o pierden** en cada lote y en cada siembra. El productor registra fincas, lotes, ciclos, costos, cosechas y ventas. La aplicación calcula costos, rendimiento y rentabilidad, muestra el pronóstico del clima por finca y responde preguntas sobre los propios datos en un chat.
 
-- **AgroPyme AI web:** aplicación React/TypeScript para registrar fincas, lotes, ciclos, costos, jornales, cosechas y ventas con persistencia real en Supabase.
-- **Pipeline ML:** proceso en Python para consolidar, analizar y publicar los datos EVA de MADR.
+- **Aplicación publicada:** [agropyme-ai.vercel.app](https://agropyme-ai.vercel.app)
+- **Proyecto académico:** Proyecto de Ingeniería I (NRC 1236), Universidad Tecnológica de Bolívar. Integrantes: Cristian Matteo Benitez Montes y Santiago Payares.
+- **Estado:** avance funcional y probado (Avances 1 a 5). No es una versión 1.0 ni un producto comercial.
 
-## AgroPyme AI web
+> Para revisar o editar el informe [`IETR1433_Lab.tex`](IETR1433_Lab.tex), lee primero [`docs/guia_informe_latex.md`](docs/guia_informe_latex.md). Allí están las reglas editoriales, el detalle metodológico del ML y la lista de afirmaciones del informe que ya no coinciden con el código.
 
-### Estado actual
+## Contenido
 
-- Persistencia en Supabase con UUID, relaciones compuestas y RLS por `auth.uid()`.
-- Conversión automática de cosechas y ventas a kg mediante el factor de la unidad.
-- Indicadores financieros alineados entre Dashboard y Asistente IA, con `Q` (cosechado), `Qv` (vendido), `Qnv = Q - Qv` e ingresos realizados `Ir`: costo unitario `C/Q`, costo de lo vendido `(C/Q) × Qv`, margen realizado `Ir - costo de lo vendido`, margen sobre ventas `margen realizado/Ir` y rentabilidad sobre costos `margen realizado/costo de lo vendido`. El resultado proyectado `Ir + Qnv × precio estimado - C` se muestra separado y siempre como estimación.
-- Pronóstico real de cinco días por finca con Open-Meteo, caché en el navegador y alerta de lluvia.
-- AsistenteIA conectado a una Supabase Edge Function. Consulta los datos del usuario aplicando RLS, usa Anthropic cuando hay clave configurada y responde con un fallback determinístico calculado sobre los mismos datos reales cuando no la hay o Anthropic falla.
-- La función `asistente` está publicada en el proyecto enlazado con `verify_jwt = true`.
+1. [Cómo funciona](#1-cómo-funciona)
+2. [Qué se registra](#2-qué-se-registra)
+3. [Cómo se calculan los resultados](#3-cómo-se-calculan-los-resultados)
+4. [Pantallas](#4-pantallas)
+5. [Arquitectura](#5-arquitectura)
+6. [Clima, referencia de maíz y asistente](#6-clima-referencia-de-maíz-y-asistente)
+7. [Estado de los requisitos y pendientes](#7-estado-de-los-requisitos-y-pendientes)
+8. [Instalación y ejecución](#8-instalación-y-ejecución)
+9. [Pruebas](#9-pruebas)
+10. [Despliegue](#10-despliegue)
+11. [Cómo deshacer la migración del 12/11/2026](#11-cómo-deshacer-la-migración-del-12112026)
+12. [Mapa del repositorio](#12-mapa-del-repositorio)
+13. [Glosario](#13-glosario)
 
-### Requisitos del frontend
+## 1. Cómo funciona
 
-- Node.js 18 o posterior.
-- Un proyecto Supabase enlazado y aplicado.
+El problema que resuelve: un productor sabe cuánto cosechó, pero rara vez sabe cuánto le costó producir cada kilo, qué lote fue más rentable o si al final de la temporada ganó dinero. Las herramientas comerciales que lo resuelven (Granular, Conservis) están pensadas para fincas grandes y son costosas.
 
-### Configuración local
+AgroPyme organiza la información así:
 
-Desde `frontend/`:
-
-```powershell
-npm install
-Copy-Item .env.example .env
+```text
+Productor (cuenta de usuario)
+ └─ Finca            nombre, municipio DANE, ubicación (para el clima)
+     └─ Lote         nombre, área en hectáreas
+         └─ Ciclo    un cultivo sembrado en el lote: inicio, fin, estado
+             ├─ Costos:      insumos · jornales · actividades (otros costos)
+             └─ Producción:  cosechas · ventas · salidas sin venta
 ```
 
-Completa en `.env` los valores públicos del proyecto:
+El **ciclo** es la unidad que se evalúa: una siembra de un cultivo (maíz, yuca, ñame o arroz) en un lote, desde que empieza hasta que se cierra. Todos los indicadores se calculan por ciclo.
+
+El flujo de uso es: crear la finca y el lote → abrir un ciclo → registrar costos a medida que ocurren → registrar cosechas, ventas y lo que se consumió o perdió → revisar el Dashboard → finalizar el ciclo.
+
+**Modelo de negocio comercial:** todavía no está definido (no hay precio, plan de suscripción ni cliente pagador decidido). Hoy la aplicación es gratuita y de uso académico.
+
+## 2. Qué se registra
+
+| Registro | Datos que se piden | Para qué sirve |
+|---|---|---|
+| Finca | nombre, municipio (selector DANE), latitud y longitud (botón “Usar mi ubicación actual”) | Agrupa lotes; la ubicación da el pronóstico del clima; el código DANE activa la referencia histórica de maíz |
+| Lote | nombre, área (ha), municipio | El área permite calcular costo por hectárea y rendimiento |
+| Ciclo | lote, cultivo, fecha de inicio; al cerrarlo, fecha de fin | Agrupa todo lo que pasa en una siembra |
+| Insumo | nombre, cantidad × costo unitario, unidad, proveedor, actividad (opcional) | Semillas, fertilizantes, agroquímicos… |
+| Jornal | nombre, número de jornales × valor del jornal, actividad (opcional) | Mano de obra |
+| Actividad | tipo (preparación, siembra, riego, fertilización, deshierba, control de plagas, cosecha u otra), fecha, otros costos | Labores del ciclo y costos que no son insumo ni jornal (por ejemplo, alquiler de tractor) |
+| Cosecha | cantidad y unidad (kg, arroba, bulto, tonelada), **calidad** | Cuánto se produjo y de qué calidad |
+| Venta | cantidad y unidad, **precio en la unidad negociada**, calidad, tipo de comprador, nombre del comprador, **pagado o por cobrar** | Ingresos; la app convierte el precio a COP/kg |
+| Salida sin venta | tipo (consumo del hogar, alimento para animales, semilla, regalo, **pérdida**), cantidad y unidad | Producción que no se vendió |
+
+Clasificaciones disponibles:
+
+- **Calidad:** primera, segunda, tercera/descarte o sin clasificar.
+- **Tipo de comprador:** intermediario, cooperativa, plaza de mercado, industria, consumidor final u otro.
+- **Estado de pago:** pagado o por cobrar (fiado).
+
+Todas las cantidades se guardan también en kg. La conversión la hace PostgreSQL con el factor de cada unidad: arroba 12,5 kg, bulto 50 kg y tonelada 1.000 kg. Cosechas, ventas y salidas sólo aceptan unidades de peso. La suma de lo vendido y de las salidas nunca puede superar lo cosechado; la base de datos lo impide.
+
+## 3. Cómo se calculan los resultados
+
+Para un ciclo en un lote de área `A` (ha):
+
+| Símbolo | Significado |
+|---|---|
+| `C` | costo total = insumos + jornales + otros costos |
+| `Q` | kg cosechados |
+| `Qv` | kg vendidos |
+| `Qperdida` | kg perdidos |
+| `QusoPropio` | kg consumidos en el hogar, dados a animales, guardados como semilla o regalados |
+| `Qnv` | kg en bodega sin vender = `Q − Qv − Qperdida − QusoPropio` |
+| `Ir` | ingresos = Σ (kg vendidos × precio por kg), incluidas las ventas por cobrar |
+
+| Indicador | Fórmula | Lectura |
+|---|---|---|
+| Costo por hectárea | `C / A` | Compara lotes de distinto tamaño |
+| Costo por kg | `C / (Q − Qperdida)` | Cuánto costó producir cada kg aprovechable. Las pérdidas lo encarecen; sin pérdidas es `C / Q` |
+| Costo de lo vendido | costo por kg × `Qv` | Parte del costo que corresponde a lo vendido |
+| Margen realizado | `Ir − costo de lo vendido` | Ganancia sobre lo vendido. **No** es `Ir − C` |
+| Margen sobre ventas | margen / `Ir` | De cada $100 vendidos, cuánto es ganancia |
+| Rentabilidad sobre costos | margen / costo de lo vendido | De cada $100 de costo, cuánto se ganó |
+| Rendimiento | `Q / A` | kg por hectárea |
+| Precio promedio de venta | `Ir / Qv` | Precio sugerido para la proyección |
+| Ventas por cobrar | Σ ventas marcadas “por cobrar” | Dinero que aún no ha entrado |
+| Costo del uso propio | costo por kg × `QusoPropio` | Lo que costó producir lo que se quedó en la finca |
+| Resultado proyectado | `Ir + Qnv × precio estimado − C` | **Estimación** si se vende lo que queda en bodega |
+
+Reglas:
+
+- Mientras quede producto en bodega (`Qnv > 0`), los indicadores de venta se marcan **parciales**.
+- Si no hay cosecha o ventas, los indicadores que dependen de ellas aparecen como **no disponible**. Nunca se divide por cero.
+- Lo consumido o perdido no cuenta como “pendiente de venta”. Por eso el ciclo puede quedar completo y la proyección no valora a precio de mercado un producto que ya no existe.
+- El resultado proyectado siempre se presenta separado y rotulado como estimación.
+- Las fórmulas están duplicadas a propósito en [`frontend/src/utils/calculos.ts`](frontend/src/utils/calculos.ts) y [`supabase/functions/asistente/summary.ts`](supabase/functions/asistente/summary.ts). Una prueba comprueba que ambas den resultados idénticos.
+
+### Ejemplo de referencia (caso de prueba oficial)
+
+Lote de 2,5 ha de maíz, sin pérdidas ni uso propio:
+
+| Concepto | Valor |
+|---|---:|
+| Insumos | $3.466.000 |
+| Jornales (42 × $45.000 + 30 × $50.000) | $3.390.000 |
+| Otros costos (alquiler de tractor) | $2.000.000 |
+| **Costo total `C`** | **$8.856.000** |
+| Costo por hectárea | $3.542.400 |
+| Cosechado / vendido / en bodega | 11.250 / 10.500 / 750 kg |
+| Costo por kg | $787,20 |
+| Ingresos `Ir` | $11.775.000 |
+| Costo de lo vendido | $8.265.600 |
+| **Margen realizado** | **$3.509.400** |
+| Margen sobre ventas / rentabilidad sobre costos | 29,8 % / 42,5 % |
+| Rendimiento | 4.500 kg/ha |
+| Resultado proyectado si los 750 kg se venden a $1.150/kg | $3.781.500 (estimación) |
+
+## 4. Pantallas
+
+| Pantalla | Qué hace |
+|---|---|
+| **Acceso** | Registro e inicio de sesión (Supabase Auth) |
+| **Dashboard** | Selector de ciclo; costo total, ingresos, rentabilidad y producto en bodega; detalle de costo por ha y por kg, precio promedio, margen, rendimiento, uso propio, pérdidas y ventas por cobrar; producción y precio por calidad; gráficos; estimación con precio editable; clima; referencia histórica de maíz |
+| **Mis Lotes** | Crear, editar y eliminar fincas (con ubicación GPS) y lotes; crear ciclos; finalizar, reabrir y eliminar ciclos; detalle de costos por lote |
+| **Registro de Costos** | Alta, edición y eliminación de insumos, jornales y actividades; alta de proveedores |
+| **Cosechas y Ventas** | Cosechas, ventas y salidas sin venta con su clasificación; balance de la producción; edición, eliminación y “marcar como pagada” |
+| **Asistente IA** | Chat sobre los datos del usuario, con preguntas sugeridas |
+
+## 5. Arquitectura
+
+```text
+Navegador (React 18 + TypeScript + Vite + Tailwind)
+  ├─ Supabase Auth ─────────── sesión y JWT
+  ├─ Supabase PostgreSQL ───── lectura/escritura con RLS (cada usuario ve sólo lo suyo)
+  ├─ Open-Meteo ────────────── pronóstico de 5 días por finca (sin clave)
+  └─ Edge Function `asistente` (Deno)
+       ├─ valida el JWT y lee los datos del usuario con RLS (no usa service_role)
+       ├─ clasificador local de 13 intenciones
+       ├─ veto de recomendaciones de agroquímicos
+       └─ respuesta calculada con los datos reales
+```
+
+- **Datos:** el esquema completo, las restricciones y RLS están en [`docs/esquema.md`](docs/esquema.md). Las migraciones de [`supabase/migrations/`](supabase/migrations/) son la fuente de verdad.
+- **Seguridad:** todas las tablas privadas tienen RLS `auth.uid() = user_id` y claves foráneas que incluyen al propietario. El rol `anon` no tiene acceso a datos privados.
+- **Borrado seguro:** las funciones `eliminar_actividad`, `eliminar_lote`, `eliminar_ciclo` y `eliminar_finca` borran en una transacción y respetan RLS.
+
+## 6. Clima, referencia de maíz y asistente
+
+**Clima.** El navegador consulta Open-Meteo con la ubicación de cada finca: temperatura máxima, mínima y lluvia para 5 días, con caché de 30 minutos y timeout de 10 s. Muestra un aviso cuando se prevén 40 mm o más de lluvia en un día. El aviso es informativo y ese umbral aún no tiene validación agronómica.
+
+**Referencia histórica de rendimiento de maíz.** Un Random Forest entrenado con las Evaluaciones Agropecuarias Municipales (EVA 2007–2018) y clima ERA5-Land produce el rendimiento típico por municipio, sistema (tradicional o tecnificado) y semestre: 2.831 combinaciones en 1.065 municipios. La app lo muestra junto al rendimiento real del lote. Es una **referencia histórica, no una predicción**:
+
+- en la prueba 2019–2024 su error (MAE 0,877 t/ha) es prácticamente igual al de la mediana histórica (0,887 t/ha), y la diferencia no es estadísticamente significativa;
+- el rango típico de error cubre el 60,5 % de los casos, no el 80 %.
+
+El pipeline está en [`ml/`](ml/) y el detalle metodológico en la guía del informe.
+
+**Asistente.** No usa un modelo de lenguaje externo. Un clasificador local (regresión logística exportada a TypeScript) identifica el tipo de pregunta entre 13 intenciones: costos, costo por ha, costo por kg, jornales, insumos, ventas, rentabilidad, producción, comparación de ciclos, clima, explicación de indicadores, saludo y fuera de alcance. Luego responde con cifras calculadas sobre los datos reales del usuario. Por seguridad rechaza pedidos de recomendaciones o dosis de agroquímicos. El archivo [`anthropic.ts`](supabase/functions/asistente/anthropic.ts) es código heredado que no se usa: no hay ni se debe configurar `ANTHROPIC_API_KEY`.
+
+## 7. Estado de los requisitos y pendientes
+
+| Requisito | Estado |
+|---|---|
+| RF1 Usuarios, fincas, lotes, cultivos y ciclos | Implementado (incluye edición y borrado de fincas, lotes y ciclos, y cierre de ciclos) |
+| RF2 Actividades, insumos, proveedores y jornales | Implementado. Los proveedores sólo se pueden crear, no editar ni eliminar |
+| RF3 Producción y ventas por ciclo | Implementado: cosechas, ventas y salidas sin venta, con clasificación |
+| RF4 Costos e indicadores de rentabilidad | Implementado |
+| RF5 Clima y alertas por finca | Implementado; falta validar el umbral de 40 mm con un agrónomo |
+| RF6 Asistente conversacional | Implementado; sin métrica de exactitud posterior a la integración |
+| RF7 Roles y acceso compartido a fincas | Pendiente |
+| RNF1 Usabilidad móvil | Interfaz responsiva; faltan pruebas con al menos 3 productores |
+| RNF2 Seguridad | RLS probada con dos usuarios (prueba SQL); falta evidencia visual |
+| RNF3 Desempeño | Sin medición p95 |
+| RNF4 Uso sin conexión | Pendiente |
+
+Otros pendientes: reportes automáticos del ciclo, histórico comparativo dedicado, modelos de yuca y ñame, edición de proveedores y definición del modelo de negocio comercial.
+
+## 8. Instalación y ejecución
+
+Requisitos: Node.js 18 o posterior, un proyecto Supabase y, para el ML, Python 3.12.
+
+```powershell
+cd frontend
+npm install
+Copy-Item .env.example .env   # completar con la URL y la clave pública de Supabase
+npm run dev                   # http://localhost:5173
+```
+
+`frontend/.env` sólo lleva valores públicos:
 
 ```dotenv
 VITE_SUPABASE_URL=https://TU_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA
 ```
 
+Nunca coloques `service_role` ni otros secretos en el `.env` de Vite.
 
-Inicia la aplicación:
+Para el pipeline de maíz, sigue [`ml/README.md`](ml/README.md). Los datos EVA crudos (`data/`) no están en Git y se colocan a mano.
+
+## 9. Pruebas
+
+| Conjunto | Comando | Resultado al 12/11/2026 |
+|---|---|---|
+| Frontend (Vitest) | `cd frontend; npm test` | 39 pruebas en 6 archivos |
+| Tipos, lint y build | `npm run typecheck; npm run lint; npm run build` | Sin errores (5 advertencias de lint previas) |
+| Edge Function (Deno) | `npx --yes deno test --allow-read supabase/functions/asistente` | 17 pruebas, incluida la paridad de fórmulas con el frontend |
+| SQL contra Supabase | `.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\<archivo>.sql` | 6 scripts aprobados |
+| ML | `python -m pytest ml/tests` | Requiere `data/processed/` local |
+
+Los scripts SQL ([`supabase/tests/`](supabase/tests/)) envuelven todo en una transacción con `ROLLBACK`, así que no dejan datos:
+
+- `rls_dos_usuarios`: aislamiento entre dos usuarios;
+- `cantidad_kg`: conversión a kg;
+- `salidas_y_clasificacion`: arrobas, calidad, salidas, unidades de peso, cierre y borrado de ciclos y fincas;
+- `editar_eliminar_registros`, `editar_eliminar_lote` y `tipo_personalizado_actividad`.
+
+## 10. Despliegue
+
+Proyecto Supabase enlazado: `uedjzflmzpyzriyjxhyd` (región `us-west-2`).
 
 ```powershell
-npm run dev
-```
-
-### Aplicar la base de datos
-
-```powershell
+# Base de datos: aplica las migraciones pendientes
 .\frontend\node_modules\.bin\supabase.cmd db push --linked
+
+# Edge Function del asistente (versión 7 desde el 12/11/2026)
+.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref uedjzflmzpyzriyjxhyd --use-api
+.\frontend\node_modules\.bin\supabase.cmd functions list --project-ref uedjzflmzpyzriyjxhyd
 ```
 
-Las migraciones están en `supabase/migrations/`. El esquema, RLS, catálogos y triggers se documentan en [`docs/esquema.md`](docs/esquema.md).
+El frontend se publica en Vercel ([`frontend/vercel.json`](frontend/vercel.json) reescribe las rutas de la SPA). No hay CI/CD: cada cambio de la función o de la base se despliega a mano.
 
-### Clima real
+## 11. Cómo deshacer la migración del 12/11/2026
 
-El frontend consulta Open-Meteo directamente usando las coordenadas guardadas de cada finca:
+La migración [`20261112120000_clasificar_produccion_y_cierre.sql`](supabase/migrations/20261112120000_clasificar_produccion_y_cierre.sql) agregó la clasificación de cosechas y ventas, las salidas sin venta, la arroba, la regla de fecha de cierre y las funciones `eliminar_ciclo` y `eliminar_finca`. Al aplicarla no se modificó ningún dato existente.
 
-- pronóstico diario de cinco días;
-- caché en memoria segmentada por UUID de finca y coordenadas;
-- timeout, estado de error y botón **Reintentar pronóstico**;
-- alerta informativa cuando se prevén lluvias de 40 mm o más.
-
-Open-Meteo no requiere clave API. La carga del clima no bloquea el render principal de la aplicación.
-
-### Asistente IA y secretos
-
-La Edge Function está en `supabase/functions/asistente/`. Para habilit la respuesta generativa de Anthropic, configura el secreto sin escribirlo en Git ni en variables `VITE_*`:
+Para volver al estado anterior:
 
 ```powershell
-.\frontend\node_modules\.bin\supabase.cmd secrets set ANTHROPIC_API_KEY=CLAVE_DE_ANTHROPIC
+# 1. Deshacer en la base (restaura las funciones originales y quita lo agregado)
+.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\rollback\20261112120000_deshacer_clasificar_produccion_y_cierre.sql
+
+# 2. Retirar la migración para que `db push` no la vuelva a aplicar
+Remove-Item .\supabase\migrations\20261112120000_clasificar_produccion_y_cierre.sql
+
+# 3. Volver el código anterior y redesplegar la función
+git checkout 876fc44 -- frontend supabase/functions   # 876fc44 = último commit antes de estos cambios
+.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref uedjzflmzpyzriyjxhyd --use-api
 ```
 
-Opcionalmente se puede fijar el modelo:
+`git checkout` no borra los archivos que se crearon después de ese commit: elimina también `frontend/src/screens/RegistroProduccion.tsx`, `frontend/src/utils/cosechasVentas.ts` y `frontend/tests/produccion.test.ts`, `frontend/tests/cosechasVentas.test.ts`.
 
-```powershell
-.\frontend\node_modules\.bin\supabase.cmd secrets set ANTHROPIC_MODEL=claude-sonnet-5-5
-```
+Se pierden sólo los datos que dependen de la migración: salidas sin venta, calidad, tipo de comprador y estado de pago. Las cosechas y ventas se conservan; si alguna usó arroba, pasa a kg con la misma cantidad.
 
-Publica o actualiza la función sin requerir Docker:
-
-```powershell
-.\frontend\node_modules\.bin\supabase.cmd functions deploy asistente --project-ref TU_PROJECT_REF --use-api
-```
-
-Sin `ANTHROPIC_API_KEY`, o si Anthropic no responde, la misma función devuelve `source: "fallback"` con cálculos sobre los datos reales del usuario. El chat identifica esa respuesta como determinística y muestra el aviso de fallback. Nunca usa datos simulados para una sesión autenticada.
-
-### Cálculo financiero e indicadores parciales
-
-El costo total `C` de un ciclo es la suma de insumos, jornales y otros costos. Sobre `Q` kg cosechados y `Qv` kg vendidos, con `Qnv = Q - Qv`, el costo unitario es `C/Q`, el costo de lo vendido es `(C/Q) × Qv`, el margen realizado es `Ir - costo de lo vendido`, el margen sobre ventas es `margen realizado/Ir` y la rentabilidad sobre costos es `margen realizado/costo de lo vendido`.
-
-Si queda cosecha sin vender (`Qnv > 0`), los indicadores realizados se rotulan **parcial**. Si no hay cosecha, ventas o ingresos, los indicadores dependientes se muestran como **no disponible** y nunca se realiza una división por cero. El cálculo rechaza cantidades, precios y área no positivos, así como ventas superiores a la cosecha. El Dashboard y el asistente usan las mismas fórmulas; la suite Deno verifica además su paridad exacta.
-
-El resultado proyectado del ciclo se calcula como `Ir + Qnv × precio estimado - C`. El usuario edita el precio estimado y el valor se presenta separado de lo realizado, siempre rotulado **Estimación**.
-
-### Validación
-
-```powershell
-# Frontend
-cd frontend
-npm run typecheck
-npm run lint
-npm run build
-npm test
-
-# Edge Function
-cd ..
-npx --yes deno fmt --check supabase/functions/asistente
-npx --yes deno lint supabase/functions/asistente
-npx --yes deno check supabase/functions/asistente/index.ts supabase/functions/asistente/asistente_test.ts
-npx --yes deno test supabase/functions/asistente/asistente_test.ts
-
-# SQL (todas las pruebas se revierten al terminar)
-.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\rls_dos_usuarios.sql
-.\frontend\node_modules\.bin\supabase.cmd db query --linked --file .\supabase\tests\cantidad_kg.sql
-```
-
-### Pendientes de operación
-
-- Configurar `ANTHROPIC_API_KEY` para activar respuestas generativas; el fallback ya está operativo.
-- Publicar el frontend en Vercel, Netlify, Cloudflare Pages u otro hosting estático y configurar sus variables `VITE_*`.
-- Revisar la confirmación de correo de las cuentas nuevas según la política de Supabase del proyecto.
-- Realizar una prueba visual final en el hosting publicado.
-
-## Requisitos del pipeline ML
-
-- Python 3.12 (probado con Python 3.12.10 en Windows).
-- Los dos archivos fuente de MADR (EVA) descritos a continuación.
-
-## Instalación
-
-Desde la raíz del repositorio:
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r ml/requirements.txt
-```
-
-`ml/requirements.txt` está codificado en UTF-8 y contiene las versiones exactas utilizadas para validar el pipeline.
-
-## Datos fuente requeridos
-
-El directorio `data/` está excluido de Git, por lo que un clon nuevo no incluye ni las fuentes ni los artefactos generados. Antes de ejecutar el pipeline, coloca estos archivos en las rutas indicadas:
+## 12. Mapa del repositorio
 
 ```text
-data/raw/Base Agrícola EVA 2007-2018_MADR.xlsx
-data/raw/Base EVA 2019-2024.xlsx
+├─ README.md                     este documento
+├─ IETR1433_Lab.tex              informe académico (Avances 1 a 5)
+├─ docs/
+│  ├─ esquema.md                 esquema de datos, RLS, triggers y fórmulas
+│  ├─ guia_informe_latex.md      guía para revisar/editar el informe y detalle del ML
+│  └─ trazabilidad_documento.md  evidencia del corte del 31/10/2026
+├─ frontend/
+│  ├─ src/screens/               Auth, Dashboard, MisLotes, RegistroCostos, RegistroProduccion, AsistenteIA
+│  ├─ src/components/            layout, modales, selector DANE, tarjeta de maíz
+│  ├─ src/services/              Supabase, clima y cliente del asistente
+│  ├─ src/utils/                 cálculos, catálogos de producción, formato, maíz
+│  ├─ src/data/                  referencia de maíz en JSON
+│  └─ tests/                     pruebas Vitest
+├─ supabase/
+│  ├─ migrations/                esquema y cambios (fuente de verdad)
+│  ├─ rollback/                  scripts para deshacer migraciones
+│  ├─ tests/                     pruebas SQL (transaccionales)
+│  └─ functions/asistente/       Edge Function: datos, resumen, modelo, fallback, pruebas
+├─ ml/                           pipeline de rendimiento de maíz y reportes
+└─ scripts/export_assistant_model.py   exporta el clasificador sklearn a TypeScript
 ```
 
-Los nombres y las rutas son case-sensitive en Linux y CI. Los scripts no descargan los datos automáticamente.
+No versionados: `data/` (datos EVA y artefactos), `ml/models/` y `experimentos/asistente_propio/` (fuentes del clasificador). [`model_data.ts`](supabase/functions/asistente/model_data.ts) es generado: no editarlo a mano.
 
-## Ejecución del pipeline
+## 13. Glosario
 
-El pipeline debe ejecutarse en este orden:
-
-```powershell
-python ml/src/unir_eva.py
-python ml/src/limpiar_contar.py
-python ml/src/preparar_modelo.py
-python ml/src/evaluar_linea_base.py
-python ml/src/exportar_resultados.py
-```
-
-Los resultados se escriben en `data/processed/`:
-
-- `eva_bruto.pkl`
-- `eva_limpio.pkl`
-- `modelo_maiz.pkl` y `modelo_maiz.csv`
-- `modelo_yuca.pkl` y `modelo_yuca.csv`
-- `modelo_name.pkl` y `modelo_name.csv`
-- `resumen_preparacion.csv`
-- `log_preparacion.csv`
-- `eva_2007_2024_limpio.csv`
-- `log_limpieza.csv`
-
-El script `ml/src/exportar_resultados.py` también regenera `ml/reports/conteo_cultivos_EVA.xlsx`.
-
-## Preparación de datos para modelado (Fase A)
-
-`ml/src/preparar_modelo.py` parte de `eva_limpio.pkl` y crea unidades analysis-ready para maíz, yuca y ñame:
-
-- **Maíz:** unidad `municipio-año-semestre-sistema`. Las seis desagregaciones de color se reducen a `TECNIFICADO` o `TRADICIONAL`.
-- **Yuca:** unidad `municipio-año`; se suman `YUCA` y `YUCA CONSUMO EN FRESCO`, y se excluye `YUCA INDUSTRIAL`.
-- **Ñame:** unidad `municipio-año`; se suman todas sus desagregaciones.
-- **Rendimiento:** en cada unidad se suman `area_cosechada` y `produccion`, y se recalcula como `produccion / area_cosechada`; nunca se promedian rendimientos.
-- **Cobertura semestral:** en yuca y ñame, `n_semestres=2` para un reporte anual, `1` si solo se reportó A o B y `2` si se reportaron ambos. `semestre=ANUAL` identifica la frecuencia de la unidad municipio-año y `n_semestres` conserva la cobertura real.
-- **Conjuntos:** `ENTRENAMIENTO` para años hasta 2018 y `PRUEBA` desde 2019.
-- **Municipios de prueba sin historia:** en `resumen_preparacion.csv`, esta métrica se calcula por cultivo sobre **municipios distintos**, identificados por `(cod_dep, cod_mun)`, y no sobre unidades. El **numerador** es el número de municipios que aparecen en alguna unidad de prueba pero en ninguna unidad de entrenamiento del mismo cultivo; el **denominador** es el total de municipios distintos que aparecen en prueba. El porcentaje es `100 * numerador / denominador`. En maíz se evalúa **solo por municipio**, sin comparar `sistema`: un municipio que tiene historial con cualquiera de los dos sistemas cuenta como municipio con historia.
-- **Features:** se permiten `departamento`, `municipio`, `sistema` (solo en maíz), `anio` y `semestre`. Producción, área cosechada, rendimiento y área sembrada están prohibidas como features.
-- **San Andrés:** `cod_dep=88` usa siempre el nombre oficial `ARCHIPIELAGO DE SAN ANDRES, PROVIDENCIA Y SANTA CATALINA` para no separar artificialmente train y test.
-
-El script se detiene con un error claro si aparece una desagregación inesperada, se mezclan periodos anuales y semestrales en una misma unidad, quedan llaves duplicadas, aparecen rendimientos no positivos o se intenta usar una variable prohibida como feature.
-
-## Línea base de rendimiento (Fase B)
-
-`ml/src/evaluar_linea_base.py` evalúa una línea base sin fuga de información temporal. Las medianas se calculan **solo con el conjunto de entrenamiento (2007-2018)** y se aplican al conjunto de prueba (2019-2024):
-
-- **Llave de historia:** maíz usa `cod_mun + sistema`; yuca y ñame usan `cod_mun`.
-- **Respaldo:** si una fila de prueba no tiene mediana de entrenamiento para su llave, se usa la mediana de entrenamiento de su departamento (`cod_dep`). El script falla si ese respaldo tampoco existe.
-- **Métricas:** MAE y RMSE en t/ha, y MAPE porcentual calculado como `mean(abs(real - prediccion) / real * 100)`.
-- **Cortes:** total, cada año de prueba, Bolívar (`cod_dep=13`) y Caribe (`cod_dep` en `{8, 13, 20, 23, 44, 47, 70, 88}`). Cuando un subgrupo por origen de predicción está vacío, conserva `NaN` en las métricas y se reporta con cero filas.
-- **Escenario de yuca:** además de `TODOS`, se evalúa `SIN_MEDIO_SEMESTRE`, excluyendo `n_semestres=1` tanto del entrenamiento como de la prueba.
-- **Origen de la predicción:** cada archivo de salida distingue `HISTORIA` de `RESPALDO_DEPARTAMENTO`, lo que permite cuantificar el error de cada grupo por separado.
-
-La ejecución escribe en `ml/reports/`:
-
-- `predicciones_linea_base.csv`: predicciones de prueba, origen, error absoluto y error porcentual por fila.
-- `metricas_linea_base_cortes.csv`: MAE, RMSE y MAPE por total, año, Bolívar y Caribe.
-- `metricas_linea_base_origen.csv`: las mismas métricas separadas por historia/respaldo y por corte.
-- `resumen_respaldo_linea_base.csv`: filas de prueba, filas con historia, filas con respaldo departamental y porcentaje de uso del respaldo.
-- `resumen_linea_base.md`: resumen corto de los indicadores principales.
-
-Resultados del último corte reproducible:
-
-| Cultivo | Escenario | Filas de prueba | MAE (t/ha) | RMSE (t/ha) | MAPE (%) | Filas con respaldo | Respaldo (%) |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Maíz | TODOS | 11,154 | 0.887 | 1.544 | 38.85 | 179 | 1.60 |
-| Yuca | TODOS | 4,125 | 3.564 | 5.235 | 39.60 | 48 | 1.16 |
-| Yuca | SIN_MEDIO_SEMESTRE | 2,117 | 3.514 | 5.181 | 36.93 | 14 | 0.66 |
-| Ñame | TODOS | 641 | 3.853 | 5.225 | 51.51 | 38 | 5.93 |
-
-El corte temporal coincide con el cambio entre las bases EVA 2007-2018 y 2019-2024. Por ello, estas métricas miden el desempeño de la línea base sobre esa partición y no aíslan por sí solas el efecto de un posible cambio metodológico entre bases. Para comparar futuras fases, debe conservarse exactamente la misma definición de llaves, respaldo, conjuntos y cortes.
-
-## Modelos de MAÍZ (Fase C, alcance reducido)
-
-`ml/src/evaluar_modelos_maiz.py` compara la línea base con Ridge, Random Forest e HistGradientBoosting. El alcance de esta ejecución es deliberadamente reducido y reproducible:
-
-- **Features:** departamento, municipio, sistema, año, semestre, rezago de rendimiento del año anterior y las dos variables climáticas ERA5-Land. La imputación de faltantes se ajusta **dentro de cada fold**.
-- **Selección:** tres configuraciones por modelo. Los hiperparámetros se eligen con cinco folds expansivos: entrenamiento `<= t-1` y validación en `t`, para `t=2014, 2015, 2016, 2017, 2018`. El criterio es MAE medio; los empates se resuelven por RMSE medio, MAPE medio y desviación de MAE.
-- **Prueba final:** después de cerrar la selección, cada modelo se entrena con 2007-2018 y la prueba 2019-2024 se evalúa una sola vez. Línea base y modelos usan exactamente las mismas 11,154 filas.
-- **Clima incompleto:** se aceptan 5 celdas ERA5-Land sin semestres completos. Afectan 5 municipios y 112 filas de MAÍZ (79 de entrenamiento y 33 de prueba). Hay además 4 filas de 2 códigos sin geografía MGN 2023; en total, 116 filas quedan con clima faltante y se imputan dentro de cada fold. No se hizo refetch de esas celdas.
-
-### Resultado de la prueba final 2019-2024
-
-| Modelo | Filas | MAE (t/ha) | RMSE (t/ha) | MAPE (%) |
-|---|---:|---:|---:|---:|
-| Línea base | 11,154 | 0.887 | 1.544 | 38.85 |
-| HistGradientBoosting | 11,154 | 0.856 | 1.505 | 38.65 |
-| Random Forest | 11,154 | 0.877 | 1.533 | 39.09 |
-| Ridge | 11,154 | 0.945 | 1.550 | 46.77 |
-
-HistGradientBoosting mejora la línea base de forma leve: **-0.030 t/ha de MAE (-3.43%)**, **-0.040 t/ha de RMSE (-2.58%)** y **-0.20 puntos de MAPE**. Random Forest mejora MAE y RMSE, pero empeora el MAPE; Ridge no mejora la línea base. El bootstrap clusterizado por municipios no permite distinguir la mejora observada de Random Forest sobre la línea base del azar: el IC 95 % de la diferencia de MAE fue **-0,010 a 0,028 t/ha**.
-
-La ejecución escribe en `ml/reports/`:
-
-- `metricas_modelos_maiz.csv`: tabla total de la prueba final.
-- `resumen_modelos_maiz.md`: tabla legible.
-- `seleccion_hiperparametros_maiz.csv`: desempeño medio y configuración elegida por modelo.
-- `validacion_folds_modelos_maiz.csv`: las 45 métricas de los folds de selección.
-- `predicciones_modelos_maiz.csv`: predicciones por fila para los cuatro métodos.
-- `metadatos_modelos_maiz.json`: protocolo, configuraciones, conteos y marca de imputación in-fold.
-
-El diagnóstico por fuente, la importancia de variables y la orquestación end-to-end quedan fuera de esta ejecución y se harán solo si se solicitan.
-
-## Inferencia de MAÍZ (Fase D)
-
-`ml/src/inferencia_maiz.py` selecciona el modelo final exclusivamente con los cinco folds expansivos 2014-2018 y prepara una tabla de rendimiento esperado para el frontend. La prueba 2019-2024, ya evaluada en Fase C, **no se recalcula ni se usa para rankear modelos**; solo se consulta para el veto global acordado: si ningún modelo supera el MAE de la línea base en prueba, la línea base queda para inferencia.
-
-La comparación de candidatos en folds es:
-
-| Modelo | MAE medio (t/ha) | RMSE medio (t/ha) | MAPE medio (%) |
-|---|---:|---:|---:|
-| Línea base | 0.475 | 0.756 | 26.82 |
-| Random Forest | **0.395** | 0.647 | **23.38** |
-| HistGradientBoosting | 0.401 | **0.625** | 24.47 |
-| Ridge | 0.440 | 0.652 | 27.06 |
-
-Por el criterio congelado (MAE medio primero), **Random Forest queda como modelo de inferencia**, aunque HGB obtuvo el menor MAE en la prueba. No se cambia el modelo por una métrica de prueba. En la prueba, RF mejoró MAE y RMSE de la línea base, pero empeoró MAPE; HGB mejoró las tres métricas. Estos hechos se reportan sin maquillar el resultado.
-
-La tabla `ml/reports/rendimiento_esperado_maiz.csv` contiene 2,831 combinaciones reales municipio-sistema-semestre para 1,065 municipios, con:
-
-- `rendimiento_esperado_t_ha`: valor de referencia histórica del modelo final sobre el perfil mediano histórico del grupo;
-- `rango_inferior_t_ha` y `rango_superior_t_ha`: rango típico de error (percentiles 10 y 90 de los residuales out-of-fold 2014-2018). Su cobertura real en la prueba 2019-2024 fue 60,5 %, no 80 %;
-- `cod_dep`, `cod_mun` y `departamento`: claves para evitar ambigüedad de nombres homónimos.
-
-La mejora del modelo sobre la línea base no se distingue del azar en la prueba: el IC 95 % de la diferencia de MAE fue -0,010 a 0,028 t/ha. Por ello, estos valores se presentan como referencia histórica y no como predicción.
-
-El JSON consumido por el frontend se genera de forma reproducible desde ese CSV:
-
-```powershell
-python ml/src/exportar_json_frontend.py
-```
-
-La salida `frontend/src/data/rendimiento_esperado_maiz.json` contiene 2,831 registros para 1,065 municipios únicos, expresados en kg/ha.
-
-La función pública recibe `(municipio, semestre, sistema)` y devuelve esperado, rango y modelo:
-
-```python
-import sys
-sys.path.insert(0, 'ml/src')
-from inferencia_maiz import predecir_rendimiento_maiz
-
-resultado = predecir_rendimiento_maiz(
-    'CARTAGENA DE INDIAS',
-    'A',
-    'TRADICIONAL',
-)
-```
-
-Para municipios homónimos se debe agregar `cod_mun=...`. Si la combinación no tiene historia de entrenamiento, la función falla de forma explícita en vez de inventar un valor. La inferencia congela el perfil histórico mediano del grupo porque la entrada acordada no incluye año, rezago ni clima actual.
-
-Artefactos adicionales de Fase D:
-
-- `ml/reports/seleccion_modelo_final_maiz.csv`: comparación de folds y modelo de inferencia.
-- `ml/reports/validacion_folds_candidatos_finales_maiz.csv`: 20 métricas out-of-fold (cuatro métodos × cinco folds).
-- `ml/reports/metadatos_inferencia_maiz.json`: protocolo, configuración, rango y conteos.
-- `ml/reports/resumen_fase_c.md`: resumen corto de Fases C y D, clima faltante, decisión y limitaciones.
-
-## Diagnóstico post hoc de MAÍZ
-
-`ml/src/diagnostico_inferencia_maiz.py` diagnostica el Random Forest congelado sin cambiarlo, recalibrar el rango ni usar la prueba para ajustar el modelo. Calcula cobertura del rango q10-q90 total y anual, MAE/RMSE anual de RF y línea base en Bolívar, importancia de variables por permutación y un bootstrap clusterizado por municipios de la diferencia de MAE.
-
-```powershell
-python ml/src/diagnostico_inferencia_maiz.py
-```
-
-Resultados en `ml/reports/`:
-
-- `cobertura_rango_prueba_maiz.csv`: cobertura total y por año del rango congelado; `cobertura_rango_prueba_detalle_maiz.csv` conserva el resultado por fila.
-- `metricas_bolivar_anual_maiz.csv`: MAE y RMSE por año para Bolívar.
-- `importancia_permutacion_maiz.csv`: importancia media y desviación por variable; incluye el detalle de repeticiones en `importancia_permutacion_detalle_maiz.csv`.
-- `bootstrap_resumen_mae_maiz.csv`: diferencia de MAE e IC 95 %; las 5.000 réplicas quedan en `bootstrap_diferencia_mae_maiz.csv`.
-- `diagnostico_inferencia_maiz.json`: protocolo, semillas, resultados y marcas de que no hubo ajuste.
-- `resumen_diagnostico_inferencia_maiz.md`: resumen corto de los cuatro diagnósticos.
-
-## Pruebas
-
-Las pruebas son de regresión sobre los artefactos de `data/processed/`. En un clon nuevo primero hay que ejecutar el pipeline completo y después las pruebas:
-
-```powershell
-python -m pytest ml/tests
-```
-
-Si `data/processed/` no existe o está incompleta, las pruebas fallarán al leer `eva_limpio.pkl` o `eva_2007_2024_limpio.csv`.
-
-## Lectura del CSV exportado
-
-Lee `data/processed/eva_2007_2024_limpio.csv` conservando `periodo` como texto para evitar el `DtypeWarning` y no alterar identificadores o etiquetas de periodo. El aviso de lectura es usar `dtype={'periodo': str}`. En pandas 3.1, especifica también `estado_fisico_produccion` como texto para evitar el aviso de tipos mixtos de esa columna:
-
-```python
-import pandas as pd
-
-df = pd.read_csv(
-    "data/processed/eva_2007_2024_limpio.csv",
-    dtype={
-        "periodo": str,
-        "estado_fisico_produccion": str,
-    },
-)
-```
-
-Para análisis temporales usa las columnas `anio` y `semestre`.
+| Término | Significado |
+|---|---|
+| Ciclo | Una siembra de un cultivo en un lote, de inicio a cierre |
+| Jornal | Un día de trabajo de una persona |
+| Salida sin venta | Producción cosechada que no se vende: consumo, animales, semilla, regalo o pérdida |
+| En bodega | Producción cosechada que aún no se vende ni tiene otro destino (`Qnv`) |
+| DANE | Departamento Administrativo Nacional de Estadística (códigos de municipio) |
+| EVA | Evaluaciones Agropecuarias Municipales (UPRA/MADR) |
+| ERA5-Land | Reanálisis climático de Copernicus/ECMWF |
+| MAE | Error absoluto medio |
+| RLS | Row Level Security: cada fila sólo es visible para su dueño |
+| JWT | Token de sesión firmado por Supabase Auth |
+| Edge Function | Función de servidor de Supabase que corre sobre Deno |
