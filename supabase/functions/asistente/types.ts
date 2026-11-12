@@ -84,6 +84,7 @@ export interface CosechaRow {
   ciclo_id: string;
   fecha: string;
   cantidad_kg: number;
+  calidad?: string;
 }
 
 export interface VentaRow {
@@ -93,6 +94,18 @@ export interface VentaRow {
   cantidad_kg: number;
   precio_unitario: number;
   comprador: string | null;
+  calidad?: string;
+  tipo_comprador?: string | null;
+  estado_pago?: "pagado" | "por_cobrar";
+}
+
+/** Producción que sale del ciclo sin venderse (autoconsumo, semilla, pérdida…). */
+export interface SalidaRow {
+  id: string;
+  ciclo_id: string;
+  fecha: string;
+  tipo: string;
+  cantidad_kg: number;
 }
 
 export interface UserData {
@@ -105,6 +118,7 @@ export interface UserData {
   manoDeObra: ManoDeObraRow[];
   cosechas: CosechaRow[];
   ventas: VentaRow[];
+  salidas?: SalidaRow[];
 }
 
 export interface CycleSummary {
@@ -136,6 +150,11 @@ export interface CycleSummary {
   rendimiento: number | null;
   jornales: number;
   esParcial: boolean;
+  Qperdida: number;
+  QusoPropio: number;
+  costoUsoPropio: number | null;
+  ingresosPorCobrar: number;
+  precioPromedioVenta: number | null;
   insumos: Array<{ nombre: string; cantidad: number; costo: number }>;
   manoDeObra: Array<{ tipo: string; jornales: number; costo: number }>;
   actividades: Array<{ tipo: string; fecha: string; otrosCostos: number }>;

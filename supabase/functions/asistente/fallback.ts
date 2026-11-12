@@ -206,6 +206,18 @@ function answerUnitCost(cycle: CycleSummary | undefined): string {
   } COP por kg.`;
 }
 
+/** Describe lo que salió sin venderse: autoconsumo, semilla, donación y pérdidas. */
+function describeNonSales(cycle: CycleSummary): string {
+  const parts: string[] = [];
+  if (cycle.QusoPropio > 0) {
+    parts.push(`${decimalFormatter.format(cycle.QusoPropio)} kg para uso propio (hogar, animales, semilla o regalo)`);
+  }
+  if (cycle.Qperdida > 0) {
+    parts.push(`${decimalFormatter.format(cycle.Qperdida)} kg perdidos`);
+  }
+  return parts.length > 0 ? ` Además salieron sin venderse ${parts.join(" y ")}.` : "";
+}
+
 function answerSales(cycle: CycleSummary | undefined): string {
   if (!cycle) {
     return "No tienes ciclos productivos registrados, así que todavía no puedo consultar las ventas.";
@@ -213,9 +225,15 @@ function answerSales(cycle: CycleSummary | undefined): string {
   const partial = cycle.esParcial
     ? ` Quedan ${decimalFormatter.format(cycle.Qnv)} kg sin vender.`
     : "";
+  const average = cycle.precioPromedioVenta !== null
+    ? ` El precio promedio fue ${currencyFormatter.format(cycle.precioPromedioVenta)} por kg.`
+    : "";
+  const pending = cycle.ingresosPorCobrar > 0
+    ? ` De ese valor, ${currencyFormatter.format(cycle.ingresosPorCobrar)} están por cobrar.`
+    : "";
   return `En el ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) los ingresos realizados por ventas son ${
     currencyFormatter.format(cycle.ingresosRealizados)
-  } y se vendieron ${decimalFormatter.format(cycle.Qv)} kg.${partial}`;
+  } y se vendieron ${decimalFormatter.format(cycle.Qv)} kg.${average}${pending}${partial}`;
 }
 
 function answerProduction(cycle: CycleSummary | undefined): string {
@@ -224,12 +242,14 @@ function answerProduction(cycle: CycleSummary | undefined): string {
   }
   const partial = cycle.esParcial
     ? "Los indicadores realizados son parciales porque todavía queda cosecha sin vender."
+    : cycle.QusoPropio > 0 || cycle.Qperdida > 0
+    ? "No queda producción en bodega: todo se vendió o tuvo otro destino."
     : "La cosecha está totalmente vendida.";
   return `En el ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) se cosecharon ${
     decimalFormatter.format(cycle.Q)
   } kg, se vendieron ${decimalFormatter.format(cycle.Qv)} kg y quedan ${
     decimalFormatter.format(cycle.Qnv)
-  } kg sin vender. ${partial}`;
+  } kg sin vender.${describeNonSales(cycle)} ${partial}`;
 }
 
 function answerComparison(summary: DataSummary, question: string): string {
@@ -254,7 +274,7 @@ function answerComparison(summary: DataSummary, question: string): string {
 }
 
 function answerIndicatorExplanation(): string {
-  return "Q es el total cosechado, Qv el total vendido y Qnv = Q - Qv la producción pendiente de venta. El costo unitario es costo total dividido entre Q; el costo de lo vendido es costo unitario por Qv; el margen realizado es ingresos realizados menos costo de lo vendido; el margen sobre ventas divide el margen entre los ingresos, y la rentabilidad sobre costos divide el margen entre el costo de lo vendido.";
+  return "Q es el total cosechado, Qv el total vendido y Qnv = Q - Qv - salidas la producción que queda en bodega; las salidas son lo que se consumió, se dio a los animales, se guardó como semilla, se regaló o se perdió. El costo unitario es costo total dividido entre los kg aprovechables (Q menos pérdidas); el costo de lo vendido es costo unitario por Qv; el margen realizado es ingresos realizados menos costo de lo vendido; el margen sobre ventas divide el margen entre los ingresos, y la rentabilidad sobre costos divide el margen entre el costo de lo vendido.";
 }
 
 function answerHelp(): string {

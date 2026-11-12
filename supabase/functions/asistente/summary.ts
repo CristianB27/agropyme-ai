@@ -5,13 +5,30 @@ import type {
   UserData,
 } from "./types.ts";
 
+/** Tolerancia en kg para comparar sumas de valores decimales. */
+const TOLERANCIA_KG = 1e-6;
+
+function redondearKg(valor: number): number {
+  return Math.round(valor * 10_000) / 10_000;
+}
+
 export interface EntradasCalculoCiclo {
   areaHa: number;
   costoInsumos: number;
   costoJornales: number;
   costoOtros: number;
   cosechas: Array<{ cantidadKg: number }>;
-  ventas: Array<{ cantidadKg: number; precioUnitario: number }>;
+  ventas: Array<{
+    cantidadKg: number;
+    precioUnitario: number;
+    porCobrar?: boolean;
+  }>;
+  /**
+   * Producción que sale del ciclo sin venderse. `esPerdida` distingue las
+   * pérdidas (producto que se dañó) del uso propio (autoconsumo, alimento
+   * animal, semilla o donación).
+   */
+  salidas?: Array<{ cantidadKg: number; esPerdida: boolean }>;
 }
 
 export interface IndicadoresCiclo {
@@ -28,12 +45,21 @@ export interface IndicadoresCiclo {
   margenSobreVentas: number | null;
   rendimiento: number | null;
   esParcial: boolean;
+  Qperdida: number;
+  QusoPropio: number;
+  costoUsoPropio: number | null;
+  ingresosPorCobrar: number;
+  precioPromedioVenta: number | null;
 }
 
 function assertValorValido(valor: number, nombre: string): void {
   if (!Number.isFinite(valor) || valor <= 0) {
     throw new Error(`${nombre} debe ser mayor que cero.`);
   }
+}
+
+function sumarKg(registros: Array<{ cantidadKg: number }>): number {
+  return registros.reduce((sum, registro) => sum + registro.cantidadKg, 0);
 }
 
 export function validarDatosCiclo(entradas: EntradasCalculoCiclo): void {
@@ -45,44 +71,65 @@ export function validarDatosCiclo(entradas: EntradasCalculoCiclo): void {
     assertValorValido(venta.cantidadKg, "La cantidad vendida");
     assertValorValido(venta.precioUnitario, "El precio de venta");
   });
+  (entradas.salidas ?? []).forEach((salida) =>
+    assertValorValido(salida.cantidadKg, "La cantidad de la salida")
+  );
 
-  const Q = entradas.cosechas.reduce(
-    (sum, cosecha) => sum + cosecha.cantidadKg,
-    0,
-  );
-  const Qv = entradas.ventas.reduce(
-    (sum, venta) => sum + venta.cantidadKg,
-    0,
-  );
-  if (Qv > Q) {
+  const Q = sumarKg(entradas.cosechas);
+  const Qv = sumarKg(entradas.ventas);
+  const Qs = sumarKg(entradas.salidas ?? []);
+  if (Qv > Q + TOLERANCIA_KG) {
     throw new Error("Las ventas no pueden superar la cosecha del ciclo.");
+  }
+  if (Qv + Qs > Q + TOLERANCIA_KG) {
+    throw new Error(
+      "Las ventas y salidas sin venta no pueden superar la cosecha del ciclo.",
+    );
   }
 }
 
+/**
+ * Indicadores del ciclo. Todas las cantidades están en kg.
+ *
+ * - Q: cosechado. Qv: vendido. Qperdida: perdido. QusoPropio: autoconsumo,
+ *   alimento animal, semilla o donación.
+ * - Qnv = Q - Qv - Qperdida - QusoPropio: producción en bodega, pendiente de
+ *   venta.
+ * - Costo unitario = C / (Q - Qperdida): las pérdidas no se reparten como
+ *   producto, encarecen cada kg aprovechable.
+ * - Costo de lo vendido = costo unitario × Qv; costo del uso propio = costo
+ *   unitario × QusoPropio.
+ */
 export function calcularIndicadoresCiclo(
   entradas: EntradasCalculoCiclo,
 ): IndicadoresCiclo {
   validarDatosCiclo(entradas);
 
+  const salidas = entradas.salidas ?? [];
   const costoTotal = entradas.costoInsumos +
     entradas.costoJornales + entradas.costoOtros;
-  const Q = entradas.cosechas.reduce(
-    (sum, cosecha) => sum + cosecha.cantidadKg,
-    0,
-  );
-  const Qv = entradas.ventas.reduce(
-    (sum, venta) => sum + venta.cantidadKg,
-    0,
-  );
-  const Qnv = Q - Qv;
+  const Q = sumarKg(entradas.cosechas);
+  const Qv = sumarKg(entradas.ventas);
+  const Qperdida = sumarKg(salidas.filter((salida) => salida.esPerdida));
+  const QusoPropio = sumarKg(salidas.filter((salida) => !salida.esPerdida));
+  const Qnv = Math.max(0, redondearKg(Q - Qv - Qperdida - QusoPropio));
+  const Qaprovechable = Q - Qperdida;
   const ingresosRealizados = entradas.ventas.reduce(
     (sum, venta) => sum + venta.cantidadKg * venta.precioUnitario,
     0,
   );
+  const ingresosPorCobrar = entradas.ventas
+    .filter((venta) => venta.porCobrar === true)
+    .reduce((sum, venta) => sum + venta.cantidadKg * venta.precioUnitario, 0);
 
-  const costoUnitario = Q > 0 ? costoTotal / Q : null;
+  const costoUnitario = Qaprovechable > TOLERANCIA_KG
+    ? costoTotal / Qaprovechable
+    : null;
   const costoDeLoVendido = Qv > 0 && costoUnitario !== null
     ? costoUnitario * Qv
+    : null;
+  const costoUsoPropio = QusoPropio > 0 && costoUnitario !== null
+    ? costoUnitario * QusoPropio
     : null;
   const margenRealizado = Qv > 0 && ingresosRealizados > 0 &&
       costoDeLoVendido !== null
@@ -110,6 +157,11 @@ export function calcularIndicadoresCiclo(
     margenSobreVentas,
     rendimiento: Q > 0 ? Q / entradas.areaHa : null,
     esParcial: Qnv > 0,
+    Qperdida,
+    QusoPropio,
+    costoUsoPropio,
+    ingresosPorCobrar,
+    precioPromedioVenta: Qv > 0 ? ingresosRealizados / Qv : null,
   };
 }
 
@@ -159,6 +211,9 @@ export function buildDataSummary(
       cosecha.ciclo_id === ciclo.id
     );
     const ventas = data.ventas.filter((venta) => venta.ciclo_id === ciclo.id);
+    const salidas = (data.salidas ?? []).filter((salida) =>
+      salida.ciclo_id === ciclo.id
+    );
 
     const costoInsumos = insumos.reduce(
       (total, insumo) => total + insumo.cantidad * insumo.costo_unitario,
@@ -184,6 +239,11 @@ export function buildDataSummary(
       ventas: ventas.map((venta) => ({
         cantidadKg: venta.cantidad_kg,
         precioUnitario: venta.precio_unitario,
+        porCobrar: venta.estado_pago === "por_cobrar",
+      })),
+      salidas: salidas.map((salida) => ({
+        cantidadKg: salida.cantidad_kg,
+        esPerdida: salida.tipo === "perdida",
       })),
     });
     const jornales = manoDeObra.reduce(
@@ -233,6 +293,11 @@ export function buildDataSummary(
       rendimiento: indicadores.rendimiento,
       jornales,
       esParcial: indicadores.esParcial,
+      Qperdida: indicadores.Qperdida,
+      QusoPropio: indicadores.QusoPropio,
+      costoUsoPropio: indicadores.costoUsoPropio,
+      ingresosPorCobrar: indicadores.ingresosPorCobrar,
+      precioPromedioVenta: indicadores.precioPromedioVenta,
       insumos: insumos.map((insumo) => ({
         nombre: insumo.nombre,
         cantidad: insumo.cantidad,

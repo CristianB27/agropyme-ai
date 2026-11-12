@@ -11,6 +11,7 @@ import type {
   InsumoRow,
   LoteRow,
   ManoDeObraRow,
+  SalidaRow,
   UserData,
   VentaRow,
 } from "./types.ts";
@@ -118,6 +119,7 @@ function mapCosecha(row: Record<string, unknown>): CosechaRow {
     ciclo_id: stringValue(row.ciclo_id),
     fecha: stringValue(row.fecha),
     cantidad_kg: numberValue(row.cantidad_kg),
+    calidad: stringValue(row.calidad) || "sin_clasificar",
   };
 }
 
@@ -129,7 +131,36 @@ function mapVenta(row: Record<string, unknown>): VentaRow {
     cantidad_kg: numberValue(row.cantidad_kg),
     precio_unitario: numberValue(row.precio_unitario),
     comprador: nullableString(row.comprador),
+    calidad: stringValue(row.calidad) || "sin_clasificar",
+    tipo_comprador: nullableString(row.tipo_comprador),
+    estado_pago: row.estado_pago === "por_cobrar" ? "por_cobrar" : "pagado",
   };
+}
+
+function mapSalida(row: Record<string, unknown>): SalidaRow {
+  return {
+    id: stringValue(row.id),
+    ciclo_id: stringValue(row.ciclo_id),
+    fecha: stringValue(row.fecha),
+    tipo: stringValue(row.tipo),
+    cantidad_kg: numberValue(row.cantidad_kg),
+  };
+}
+
+/**
+ * La tabla salidas_produccion llega con la migración 20261112120000; si aún
+ * no existe, el asistente sigue funcionando sin salidas.
+ */
+async function fetchOptionalRows(
+  client: SupabaseClient,
+  table: string,
+): Promise<Record<string, unknown>[]> {
+  const { data, error } = await client.from(table).select("*");
+  if (error) {
+    if (error.code === "PGRST205" || error.code === "42P01") return [];
+    throw new Error(`No se pudieron cargar ${table}: ${error.message}`);
+  }
+  return (data ?? []) as Record<string, unknown>[];
 }
 
 export async function loadUserData(accessToken: string): Promise<UserData> {
@@ -166,6 +197,7 @@ export async function loadUserData(accessToken: string): Promise<UserData> {
     manoDeObra,
     cosechas,
     ventas,
+    salidas,
   ] = await Promise.all([
     fetchRows(client, "fincas"),
     fetchRows(client, "lotes"),
@@ -176,6 +208,7 @@ export async function loadUserData(accessToken: string): Promise<UserData> {
     fetchRows(client, "mano_de_obra"),
     fetchRows(client, "cosechas"),
     fetchRows(client, "ventas"),
+    fetchOptionalRows(client, "salidas_produccion"),
   ]);
 
   return {
@@ -188,5 +221,6 @@ export async function loadUserData(accessToken: string): Promise<UserData> {
     manoDeObra: manoDeObra.map(mapManoDeObra),
     cosechas: cosechas.map(mapCosecha),
     ventas: ventas.map(mapVenta),
+    salidas: salidas.map(mapSalida),
   };
 }

@@ -225,14 +225,24 @@ const ejemploUserData: UserData = {
     cantidad: 1,
     costo_unitario: 3_466_000,
   }],
-  manoDeObra: [{
-    id: "jornal-ciclo",
-    ciclo_id: "ciclo-maiz",
-    actividad_id: "actividad-siembra",
-    fecha: "2026-01-03",
-    num_jornales: 22.6,
-    valor_jornal: 150_000,
-  }],
+  manoDeObra: [
+    {
+      id: "jornal-ciclo-1",
+      ciclo_id: "ciclo-maiz",
+      actividad_id: "actividad-siembra",
+      fecha: "2026-01-03",
+      num_jornales: 42,
+      valor_jornal: 45_000,
+    },
+    {
+      id: "jornal-ciclo-2",
+      ciclo_id: "ciclo-maiz",
+      actividad_id: "actividad-siembra",
+      fecha: "2026-01-04",
+      num_jornales: 30,
+      valor_jornal: 50_000,
+    },
+  ],
   cosechas: [{
     id: "cosecha-ciclo",
     ciclo_id: "ciclo-maiz",
@@ -425,6 +435,67 @@ Deno.test("el frontend y la Edge Function producen los mismos indicadores", () =
     calcularResultadoProyectadoFrontend(frontend, 1_150),
     "El resultado proyectado frontend y Edge debe ser idéntico",
   );
+});
+
+Deno.test("frontend y Edge coinciden con salidas sin venta y ventas por cobrar", () => {
+  const entradas = {
+    areaHa: 2,
+    costoInsumos: 600_000,
+    costoJornales: 300_000,
+    costoOtros: 0,
+    cosechas: [{ cantidadKg: 1_000 }],
+    ventas: [
+      { cantidadKg: 500, precioUnitario: 1_600 },
+      { cantidadKg: 100, precioUnitario: 1_000, porCobrar: true },
+    ],
+    salidas: [
+      { cantidadKg: 100, esPerdida: false },
+      { cantidadKg: 100, esPerdida: true },
+    ],
+  };
+  const frontend = calcularIndicadoresFrontend(entradas);
+  const edge = calcularIndicadoresCiclo(entradas);
+
+  assertEquals(
+    JSON.stringify(edge),
+    JSON.stringify(frontend),
+    "Los indicadores con salidas deben ser idénticos en frontend y Edge",
+  );
+  assertEquals(edge.Qnv, 200, "En bodega quedan Q - Qv - salidas");
+  assertEquals(edge.costoUnitario, 1_000, "El costo se reparte entre los kg aprovechables");
+  assertEquals(edge.ingresosPorCobrar, 100_000, "Ventas por cobrar");
+});
+
+Deno.test("el fallback informa salidas sin venta y ventas por cobrar", () => {
+  const cicloId = userData.ciclos[0].id;
+  const summary = buildDataSummary({
+    ...userData,
+    ventas: userData.ventas.map((venta, index) =>
+      index === 0 ? { ...venta, estado_pago: "por_cobrar" as const } : venta
+    ),
+    salidas: [
+      { id: "s1", ciclo_id: cicloId, fecha: "2026-06-10", tipo: "autoconsumo", cantidad_kg: 1 },
+      { id: "s2", ciclo_id: cicloId, fecha: "2026-06-11", tipo: "perdida", cantidad_kg: 1 },
+    ],
+  });
+  const cycle = summary.ciclos.find((item) => item.id === cicloId);
+  assert(cycle, "Debe existir el ciclo de prueba");
+  assertEquals(cycle.QusoPropio, 1, "Uso propio en el resumen");
+  assertEquals(cycle.Qperdida, 1, "Pérdidas en el resumen");
+  assert(cycle.ingresosPorCobrar > 0, "Debe haber ventas por cobrar");
+
+  const production = deterministicAnswer(
+    `¿Cuánto se cosechó y cuánto queda sin vender de ${cycle.cultivo} en ${cycle.lote}?`,
+    summary,
+  );
+  assert(production.includes("uso propio"), `Debe mencionar el uso propio: ${production}`);
+  assert(production.includes("perdidos"), `Debe mencionar las pérdidas: ${production}`);
+
+  const sales = deterministicAnswer(
+    `¿Cuánto vendí de ${cycle.cultivo} en ${cycle.lote}?`,
+    summary,
+  );
+  assert(sales.includes("por cobrar"), `Debe mencionar lo que está por cobrar: ${sales}`);
 });
 
 Deno.test("los indicadores no disponibles no producen divisiones por cero", () => {
