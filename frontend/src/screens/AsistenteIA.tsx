@@ -12,7 +12,7 @@ interface ChatMessage {
 }
 
 function buildSuggestedQuestions(data: AppData): string[] {
-  const cycle = data.ciclos_productivos[0];
+  const cycle = data.ciclos_productivos[data.ciclos_productivos.length - 1];
   const lote = cycle
     ? data.lotes.find((item) => item.id === cycle.lote_id)
     : data.lotes[0];

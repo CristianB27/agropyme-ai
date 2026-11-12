@@ -1,13 +1,14 @@
-import { LayoutDashboard, Map, Receipt, MessageCircle, Leaf, LogOut } from 'lucide-react';
+import { LayoutDashboard, Map, Receipt, MessageCircle, Leaf, LogOut, Wheat } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-export type ScreenId = 'dashboard' | 'lotes' | 'costos' | 'asistente';
+export type ScreenId = 'dashboard' | 'lotes' | 'costos' | 'produccion' | 'asistente';
 
-export const NAV_ITEMS: { id: ScreenId; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'lotes', label: 'Mis Lotes', icon: Map },
-  { id: 'costos', label: 'Registro de Costos', icon: Receipt },
-  { id: 'asistente', label: 'Asistente IA', icon: MessageCircle },
+export const NAV_ITEMS: { id: ScreenId; label: string; shortLabel: string; icon: typeof LayoutDashboard }[] = [
+  { id: 'dashboard', label: 'Dashboard', shortLabel: 'Inicio', icon: LayoutDashboard },
+  { id: 'lotes', label: 'Mis Lotes', shortLabel: 'Lotes', icon: Map },
+  { id: 'costos', label: 'Registro de Costos', shortLabel: 'Costos', icon: Receipt },
+  { id: 'produccion', label: 'Cosechas y Ventas', shortLabel: 'Ventas', icon: Wheat },
+  { id: 'asistente', label: 'Asistente IA', shortLabel: 'Asistente', icon: MessageCircle },
 ];
 
 interface LayoutProps {
@@ -135,7 +136,7 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
               }`}
             >
               <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium leading-tight">{item.label}</span>
+              <span className="text-[10px] font-medium leading-tight">{item.shortLabel}</span>
             </button>
           );
         })}

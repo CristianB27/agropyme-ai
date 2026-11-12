@@ -6,12 +6,14 @@ import Auth from './screens/Auth';
 import Dashboard from './screens/Dashboard';
 import MisLotes from './screens/MisLotes';
 import RegistroCostos from './screens/RegistroCostos';
+import RegistroProduccion from './screens/RegistroProduccion';
 import AsistenteIA from './screens/AsistenteIA';
 
 const SCREEN_PATHS: Record<ScreenId, string> = {
   dashboard: '/',
   lotes: '/lotes',
   costos: '/costos',
+  produccion: '/produccion',
   asistente: '/asistente',
 };
 
@@ -41,9 +43,10 @@ function App() {
     <ProtectedRoute>
       <AppProvider>
         <Layout current={screen} onNavigate={navigate}>
-          {screen === 'dashboard' && <Dashboard />}
+          {screen === 'dashboard' && <Dashboard onNavigate={navigate} />}
           {screen === 'lotes' && <MisLotes onNavigate={navigate} />}
           {screen === 'costos' && <RegistroCostos />}
+          {screen === 'produccion' && <RegistroProduccion onNavigate={navigate} />}
           {screen === 'asistente' && <AsistenteIA />}
         </Layout>
       </AppProvider>

@@ -23,6 +23,14 @@ export function formatNumber(value: number, decimals = 0): string {
   }).format(value);
 }
 
+/** Cantidades físicas (kg, bultos…): hasta dos decimales, sin ceros sobrantes. */
+export function formatCantidad(value: number): string {
+  return new Intl.NumberFormat('es-CO', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function formatPercent(value: number, decimals = 1): string {
   return `${formatNumber(value, decimals)} %`;
 }

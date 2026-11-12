@@ -3,14 +3,19 @@ import { normalizarTipoPersonalizado } from '../utils/actividades';
 import type {
   Actividad,
   AppData,
+  CalidadProducto,
   CicloProductivo,
   Cosecha,
   Cultivo,
+  EstadoPago,
   Finca,
   Insumo,
   Lote,
   ManoDeObra,
   Proveedor,
+  SalidaProduccion,
+  TipoComprador,
+  TipoSalida,
   Unidad,
   Venta,
 } from '../types';
@@ -22,8 +27,12 @@ function assertData<T>(data: T | null, context: string): T {
   return data;
 }
 
-function assertError(error: { message: string } | null): void {
-  if (error) throw new Error(error.message);
+function assertError(error: { message: string; code?: string } | null): void {
+  if (error) {
+    const databaseError = new Error(error.message) as Error & { code?: string };
+    databaseError.code = error.code;
+    throw databaseError;
+  }
 }
 
 function numberValue(value: unknown): number {
@@ -39,6 +48,28 @@ function nullableStringValue(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+const CALIDADES_VALIDAS: CalidadProducto[] = ['primera', 'segunda', 'tercera', 'sin_clasificar'];
+const TIPOS_COMPRADOR_VALIDOS: TipoComprador[] = [
+  'intermediario', 'cooperativa', 'plaza_mercado', 'industria', 'consumidor_final', 'otro',
+];
+const TIPOS_SALIDA_VALIDOS: TipoSalida[] = ['autoconsumo', 'alimento_animal', 'semilla', 'donacion', 'perdida'];
+
+function calidadValue(value: unknown): CalidadProducto {
+  return CALIDADES_VALIDAS.includes(value as CalidadProducto) ? value as CalidadProducto : 'sin_clasificar';
+}
+
+function tipoCompradorValue(value: unknown): TipoComprador | null {
+  return TIPOS_COMPRADOR_VALIDOS.includes(value as TipoComprador) ? value as TipoComprador : null;
+}
+
+function estadoPagoValue(value: unknown): EstadoPago {
+  return value === 'por_cobrar' ? 'por_cobrar' : 'pagado';
+}
+
+function tipoSalidaValue(value: unknown): TipoSalida {
+  return TIPOS_SALIDA_VALIDOS.includes(value as TipoSalida) ? value as TipoSalida : 'autoconsumo';
 }
 
 function mapFinca(row: RawRow): Finca {
@@ -130,6 +161,15 @@ function mapManoDeObra(row: RawRow): ManoDeObra {
   };
 }
 
+function mapUnidad(row: RawRow): Unidad {
+  return {
+    id: stringValue(row.id),
+    nombre: stringValue(row.nombre),
+    factor_a_kg: numberValue(row.factor_a_kg),
+    es_masa: row.es_masa === true,
+  };
+}
+
 function mapCosecha(row: RawRow, unidades: Map<string, Unidad>): Cosecha {
   const unidadId = stringValue(row.unidad_id);
   return {
@@ -141,6 +181,8 @@ function mapCosecha(row: RawRow, unidades: Map<string, Unidad>): Cosecha {
     unidad_id: unidadId,
     unidad: unidades.get(unidadId)?.nombre ?? 'kg',
     cantidad_kg: numberValue(row.cantidad_kg),
+    calidad: calidadValue(row.calidad),
+    descripcion: nullableStringValue(row.descripcion),
   };
 }
 
@@ -156,8 +198,38 @@ function mapVenta(row: RawRow, unidades: Map<string, Unidad>): Venta {
     unidad: unidades.get(unidadId)?.nombre ?? 'kg',
     cantidad_kg: numberValue(row.cantidad_kg),
     precio_unitario: numberValue(row.precio_unitario),
-    comprador: typeof row.comprador === 'string' ? row.comprador : null,
+    comprador: nullableStringValue(row.comprador),
+    calidad: calidadValue(row.calidad),
+    tipo_comprador: tipoCompradorValue(row.tipo_comprador),
+    estado_pago: estadoPagoValue(row.estado_pago),
   };
+}
+
+function mapSalida(row: RawRow, unidades: Map<string, Unidad>): SalidaProduccion {
+  const unidadId = stringValue(row.unidad_id);
+  return {
+    id: stringValue(row.id),
+    user_id: stringValue(row.user_id),
+    ciclo_id: stringValue(row.ciclo_id),
+    fecha: stringValue(row.fecha),
+    tipo: tipoSalidaValue(row.tipo),
+    cantidad: numberValue(row.cantidad),
+    unidad_id: unidadId,
+    unidad: unidades.get(unidadId)?.nombre ?? 'kg',
+    cantidad_kg: numberValue(row.cantidad_kg),
+    descripcion: nullableStringValue(row.descripcion),
+  };
+}
+
+/**
+ * Las escrituras de cosechas, ventas y salidas incrustan `unidades(...)` en la
+ * respuesta; esta función arma el mapa de unidades a partir de esa fila.
+ */
+function unidadEmbebida(row: RawRow): Map<string, Unidad> {
+  const unidad = row.unidades as RawRow | null | undefined;
+  const unidadId = stringValue(row.unidad_id);
+  if (!unidad || typeof unidad !== 'object') return new Map();
+  return new Map([[unidadId, { ...mapUnidad(unidad), id: unidadId }]]);
 }
 
 export type NuevaFinca = Omit<Finca, 'id' | 'user_id' | 'cod_mun'> & { cod_mun?: string | null };
@@ -168,6 +240,29 @@ export type NuevoCiclo = Omit<CicloProductivo, 'id' | 'user_id' | 'fecha_fin' | 
 export type NuevaActividad = Omit<Actividad, 'id' | 'user_id' | 'tipo_personalizado'> & {
   tipo_personalizado?: string | null;
 };
+
+export type NuevaCosecha = Pick<
+  Cosecha,
+  'ciclo_id' | 'fecha' | 'cantidad' | 'unidad_id' | 'calidad' | 'descripcion'
+>;
+
+/** `precio_unitario` siempre en COP por kg. */
+export type NuevaVenta = Pick<
+  Venta,
+  | 'ciclo_id' | 'fecha' | 'cantidad' | 'unidad_id' | 'precio_unitario' | 'comprador'
+  | 'calidad' | 'tipo_comprador' | 'estado_pago'
+>;
+
+export type NuevaSalida = Pick<
+  SalidaProduccion,
+  'ciclo_id' | 'fecha' | 'tipo' | 'cantidad' | 'unidad_id' | 'descripcion'
+>;
+
+export interface CambioEstadoCiclo {
+  estado: CicloProductivo['estado'];
+  fecha_fin: string | null;
+}
+
 export type NuevoInsumo = Omit<Insumo, 'id' | 'user_id'>;
 export type NuevaManoDeObra = Omit<ManoDeObra, 'id' | 'user_id'>;
 export type NuevoProveedor = {
@@ -217,6 +312,22 @@ export async function createFinca(finca: NuevaFinca): Promise<Finca> {
   return insertAndMap('fincas', { ...finca, cod_mun: finca.cod_mun ?? null }, mapFinca);
 }
 
+export async function updateFinca(id: string, finca: NuevaFinca): Promise<Finca> {
+  return updateAndMap('fincas', id, {
+    nombre: finca.nombre.trim(),
+    municipio: finca.municipio.trim(),
+    cod_mun: finca.cod_mun ?? null,
+    latitud: finca.latitud,
+    longitud: finca.longitud,
+  }, mapFinca);
+}
+
+export async function deleteFinca(id: string): Promise<void> {
+  const { data, error } = await supabase.rpc('eliminar_finca', { p_finca_id: id });
+  assertError(error);
+  if (data !== true) throw new Error('La finca no existe o ya fue eliminada.');
+}
+
 export async function updateFincaCodMun(
   fincaId: string,
   codMun: string | null,
@@ -257,6 +368,19 @@ export async function deleteLote(id: string): Promise<void> {
 
 export async function createCiclo(ciclo: NuevoCiclo): Promise<CicloProductivo> {
   return insertAndMap('ciclos', { ...ciclo, estado: 'activo' }, mapCiclo);
+}
+
+export async function updateCicloEstado(id: string, cambio: CambioEstadoCiclo): Promise<CicloProductivo> {
+  return updateAndMap('ciclos', id, {
+    estado: cambio.estado === 'Finalizado' ? 'finalizado' : 'activo',
+    fecha_fin: cambio.fecha_fin,
+  }, mapCiclo);
+}
+
+export async function deleteCiclo(id: string): Promise<void> {
+  const { data, error } = await supabase.rpc('eliminar_ciclo', { p_ciclo_id: id });
+  assertError(error);
+  if (data !== true) throw new Error('El ciclo no existe o ya fue eliminado.');
 }
 
 export async function createActividad(actividad: NuevaActividad): Promise<Actividad> {
@@ -315,36 +439,112 @@ export async function deleteActividad(id: string): Promise<void> {
   if (data !== true) throw new Error('La actividad no existe o ya fue eliminada.');
 }
 
+// ---------------------------------------------------------------------------
+// Cosechas, ventas y salidas sin venta.
+// `cantidad_kg` lo calcula el trigger `calcular_cantidad_kg` de PostgreSQL.
+// ---------------------------------------------------------------------------
 
+const SELECT_CON_UNIDAD = '*, unidades(nombre, factor_a_kg, es_masa)';
+
+async function guardarConUnidad<T>(
+  table: string,
+  payload: Record<string, unknown>,
+  mapper: (row: RawRow, unidades: Map<string, Unidad>) => T,
+  id?: string,
+): Promise<T> {
+  const query = id
+    ? supabase.from(table).update(payload).eq('id', id)
+    : supabase.from(table).insert(payload);
+  const { data, error } = await query.select(SELECT_CON_UNIDAD).single();
+  assertError(error);
+  const row = data as RawRow;
+  return mapper(row, unidadEmbebida(row));
+}
+
+function payloadCosecha(cosecha: NuevaCosecha): Record<string, unknown> {
+  return { ...cosecha, descripcion: cosecha.descripcion?.trim() || null };
+}
+
+function payloadVenta(venta: NuevaVenta): Record<string, unknown> {
+  return { ...venta, comprador: venta.comprador?.trim() || null };
+}
+
+function payloadSalida(salida: NuevaSalida): Record<string, unknown> {
+  return { ...salida, descripcion: salida.descripcion?.trim() || null };
+}
+
+export async function createCosecha(cosecha: NuevaCosecha): Promise<Cosecha> {
+  return guardarConUnidad('cosechas', payloadCosecha(cosecha), mapCosecha);
+}
+
+export async function updateCosecha(id: string, cosecha: NuevaCosecha): Promise<Cosecha> {
+  return guardarConUnidad('cosechas', payloadCosecha(cosecha), mapCosecha, id);
+}
+
+export async function deleteCosecha(id: string): Promise<void> {
+  await deleteById('cosechas', id);
+}
+
+export async function createVenta(venta: NuevaVenta): Promise<Venta> {
+  return guardarConUnidad('ventas', payloadVenta(venta), mapVenta);
+}
+
+export async function updateVenta(id: string, venta: NuevaVenta): Promise<Venta> {
+  return guardarConUnidad('ventas', payloadVenta(venta), mapVenta, id);
+}
+
+export async function deleteVenta(id: string): Promise<void> {
+  await deleteById('ventas', id);
+}
+
+export async function createSalida(salida: NuevaSalida): Promise<SalidaProduccion> {
+  return guardarConUnidad('salidas_produccion', payloadSalida(salida), mapSalida);
+}
+
+export async function updateSalida(id: string, salida: NuevaSalida): Promise<SalidaProduccion> {
+  return guardarConUnidad('salidas_produccion', payloadSalida(salida), mapSalida, id);
+}
+
+export async function deleteSalida(id: string): Promise<void> {
+  await deleteById('salidas_produccion', id);
+}
+
+/**
+ * La tabla `salidas_produccion` llega con la migración 20261112120000. Si la
+ * base todavía no la tiene, la aplicación sigue funcionando sin salidas.
+ */
+function esTablaInexistente(error: { code?: string } | null): boolean {
+  return error?.code === 'PGRST205' || error?.code === '42P01';
+}
 
 export async function loadAppData(): Promise<AppData> {
-  const [fincas, lotes, proveedores, ciclos, actividades, insumos, manoDeObra, cultivos, unidades, cosechas, ventas] = await Promise.all([
-    supabase.from('fincas').select('*'),
-    supabase.from('lotes').select('*'),
-    supabase.from('proveedores').select('*'),
-    supabase.from('ciclos').select('*'),
+  const [fincas, lotes, proveedores, ciclos, actividades, insumos, manoDeObra, cultivos, unidades, cosechas, ventas, salidas] = await Promise.all([
+    supabase.from('fincas').select('*').order('created_at'),
+    supabase.from('lotes').select('*').order('created_at'),
+    supabase.from('proveedores').select('*').order('nombre'),
+    // Orden cronológico: el último ciclo de cada lote es el más reciente.
+    supabase.from('ciclos').select('*').order('fecha_inicio').order('created_at'),
     supabase.from('actividades').select('*'),
     supabase.from('insumos').select('*'),
     supabase.from('mano_de_obra').select('*'),
     supabase.from('cultivos').select('*'),
     supabase.from('unidades').select('*'),
-    supabase.from('cosechas').select('*'),
-    supabase.from('ventas').select('*'),
+    supabase.from('cosechas').select('*').order('fecha'),
+    supabase.from('ventas').select('*').order('fecha'),
+    supabase.from('salidas_produccion').select('*').order('fecha'),
   ]);
 
   for (const result of [fincas, lotes, proveedores, ciclos, actividades, insumos, manoDeObra, cultivos, unidades, cosechas, ventas]) {
     assertError(result.error);
   }
+  const salidasDisponibles = !esTablaInexistente(salidas.error);
+  if (salidasDisponibles) assertError(salidas.error);
 
   const mappedCultivos: Cultivo[] = assertData(cultivos.data, 'los cultivos').map((row) => ({
     id: stringValue(row.id),
     nombre: stringValue(row.nombre),
   }));
-  const mappedUnidades: Unidad[] = assertData(unidades.data, 'las unidades').map((row) => ({
-    id: stringValue(row.id),
-    nombre: stringValue(row.nombre),
-    factor_a_kg: numberValue(row.factor_a_kg),
-  }));
+  const mappedUnidades: Unidad[] = assertData(unidades.data, 'las unidades').map((row) => mapUnidad(row as RawRow));
   const unitMap = new Map(mappedUnidades.map((unidad) => [unidad.id, unidad]));
 
   return {
@@ -359,6 +559,9 @@ export async function loadAppData(): Promise<AppData> {
     unidades: mappedUnidades,
     cosechas: assertData(cosechas.data, 'las cosechas').map((row) => mapCosecha(row as RawRow, unitMap)),
     ventas: assertData(ventas.data, 'las ventas').map((row) => mapVenta(row as RawRow, unitMap)),
+    salidas_produccion: salidasDisponibles
+      ? assertData(salidas.data, 'las salidas de producción').map((row) => mapSalida(row as RawRow, unitMap))
+      : [],
     clima: [],
   };
 }

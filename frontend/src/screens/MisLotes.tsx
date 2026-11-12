@@ -1,25 +1,42 @@
 import { useState, useMemo } from 'react';
 import {
+  AlertTriangle,
   CheckCircle2,
   Eye,
+  Flag,
   Layers,
+  LocateFixed,
   MapPin,
   Pencil,
   Plus,
   Receipt,
+  RotateCcw,
   Ruler,
   Sprout,
   Trash2,
+  Wheat,
   X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import MunicipioDaneSelect from '../components/MunicipioDaneSelect';
 import LoteModal from '../components/LoteModal';
 import EliminarLoteModal from '../components/EliminarLoteModal';
-import { calcularCiclo, getCultivo, getFinca } from '../utils/calculos';
-import { formatCOP, formatNumber } from '../utils/format';
+import { calcularCiclo, getCultivo, getFinca, type CicloCalculo } from '../utils/calculos';
+import { formatCantidad, formatCOP, formatDate, formatNumber } from '../utils/format';
 import type { ScreenId } from '../components/Layout';
-import type { Finca } from '../types';
+import type { AppData, CicloProductivo, Finca } from '../types';
+
+function calcularSeguro(data: AppData, ciclo: CicloProductivo): CicloCalculo | null {
+  try {
+    return calcularCiclo(data, ciclo);
+  } catch {
+    return null;
+  }
+}
+
+function hoy(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 interface MisLotesProps {
   onNavigate: (id: ScreenId) => void;
@@ -32,23 +49,69 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     error,
     refresh,
     addFinca,
-    updateFincaCodMun,
+    updateFinca,
+    deleteFinca,
     addLote,
     updateLote,
     deleteLote,
     addCiclo,
+    updateCicloEstado,
+    deleteCiclo,
     setSelectedLoteForCost,
     setSelectedCicloForCost,
   } = useApp();
   const [detailLoteId, setDetailLoteId] = useState<string | null>(null);
-  const [modal, setModal] = useState<'finca' | 'lote' | 'editar-lote' | 'eliminar-lote' | 'ciclo' | 'municipio' | null>(null);
+  const [modal, setModal] = useState<'finca' | 'editar-finca' | 'lote' | 'editar-lote' | 'eliminar-lote' | 'ciclo' | null>(null);
   const [loteSeleccionadoId, setLoteSeleccionadoId] = useState<string | null>(null);
-  const [fincaMunicipioId, setFincaMunicipioId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [fincaEditadaId, setFincaEditadaId] = useState<string | null>(null);
+  const [cicloACerrar, setCicloACerrar] = useState<CicloProductivo | null>(null);
+  const [toast, setToast] = useState<{ mensaje: string; error: boolean } | null>(null);
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+  const showToast = (mensaje: string, error = false) => {
+    setToast({ mensaje, error });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleEliminarFinca = async (finca: Finca) => {
+    const lotes = data.lotes.filter((lote) => lote.finca_id === finca.id);
+    const mensaje = lotes.length > 0
+      ? `¿Eliminar la finca "${finca.nombre}"? También se eliminarán sus ${lotes.length} lote(s) con todos sus ciclos, costos, cosechas y ventas. Esta acción no se puede deshacer.`
+      : `¿Eliminar la finca "${finca.nombre}"? Esta acción no se puede deshacer.`;
+    if (!window.confirm(mensaje)) return;
+    try {
+      await deleteFinca(finca.id);
+      showToast('Finca eliminada correctamente');
+    } catch (caughtError) {
+      showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo eliminar la finca', true);
+    }
+  };
+
+  const handleReabrirCiclo = async (ciclo: CicloProductivo) => {
+    try {
+      await updateCicloEstado(ciclo.id, { estado: 'Activo', fecha_fin: null });
+      showToast('Ciclo reabierto');
+    } catch (caughtError) {
+      showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo reabrir el ciclo', true);
+    }
+  };
+
+  const handleEliminarCiclo = async (ciclo: CicloProductivo) => {
+    const cultivo = getCultivo(data, ciclo.cultivo_id);
+    if (!window.confirm(
+      `¿Eliminar el ciclo de ${cultivo?.nombre ?? 'cultivo'} iniciado el ${formatDate(ciclo.fecha_inicio)}? Se eliminarán sus actividades, costos, cosechas, ventas y salidas. Esta acción no se puede deshacer.`,
+    )) return;
+    try {
+      await deleteCiclo(ciclo.id);
+      showToast('Ciclo eliminado correctamente');
+    } catch (caughtError) {
+      showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo eliminar el ciclo', true);
+    }
+  };
+
+  const irAProduccion = (loteId: string, cicloId: string) => {
+    setSelectedLoteForCost(loteId);
+    setSelectedCicloForCost(cicloId);
+    onNavigate('produccion');
   };
 
   // Farm cards
@@ -64,7 +127,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     const ciclosLote = data.ciclos_productivos.filter((c) => c.lote_id === lote.id);
     const cicloReciente = ciclosLote[ciclosLote.length - 1];
     const cultivo = cicloReciente ? getCultivo(data, cicloReciente.cultivo_id) : undefined;
-    const calc = cicloReciente ? calcularCiclo(data, cicloReciente) : null;
+    const calc = cicloReciente ? calcularSeguro(data, cicloReciente) : null;
     return { lote, finca, cicloReciente, cultivo, calc };
   });
 
@@ -153,18 +216,33 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                 <Ruler className="w-4 h-4 text-gray-400" />
                 <span className="text-xs text-gray-600 tnum">{formatNumber(areaTotal, 1)} ha</span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFincaMunicipioId(finca.id);
-                  setModal('municipio');
-                }}
-                className="ml-auto flex items-center gap-1 text-xs font-medium text-[#2E7D32] hover:underline focus:outline-none focus:ring-2 focus:ring-[#2E7D32] rounded"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                {finca.cod_mun ? 'Editar municipio DANE' : 'Agregar municipio DANE'}
-              </button>
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFincaEditadaId(finca.id);
+                    setModal('editar-finca');
+                  }}
+                  aria-label={`Editar ${finca.nombre}`}
+                  className="flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-[#2E7D32] hover:bg-[#2E7D32]/10 focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleEliminarFinca(finca)}
+                  aria-label={`Eliminar ${finca.nombre}`}
+                  className="flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-600"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+              </div>
             </div>
+            {!finca.cod_mun && (
+              <p className="mt-2 text-[11px] text-gray-500">
+                Sin municipio DANE: edita la finca para activar la referencia histórica de rendimiento.
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -226,13 +304,22 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                         <Pencil className="w-3.5 h-3.5" /> Editar
                       </button>
                       {cicloReciente && (
-                        <button
-                          type="button"
-                          onClick={() => handleRegistrarCosto(lote.id, cicloReciente.id)}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors"
-                        >
-                          <Receipt className="w-3.5 h-3.5" /> Registrar costo
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleRegistrarCosto(lote.id, cicloReciente.id)}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                          >
+                            <Receipt className="w-3.5 h-3.5" /> Costos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => irAProduccion(lote.id, cicloReciente.id)}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                          >
+                            <Wheat className="w-3.5 h-3.5" /> Cosechas y ventas
+                          </button>
+                        </>
                       )}
                       <button
                         type="button"
@@ -269,7 +356,48 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
               setModal(null);
               showToast('Finca creada correctamente');
             } catch (caughtError) {
-              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear la finca');
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear la finca', true);
+            }
+          }}
+        />
+      )}
+      {modal === 'editar-finca' && fincaEditadaId && (
+        <FincaModal
+          key={`editar-finca-${fincaEditadaId}`}
+          finca={data.fincas.find((finca) => finca.id === fincaEditadaId)}
+          onClose={() => {
+            setModal(null);
+            setFincaEditadaId(null);
+          }}
+          onSave={async (f) => {
+            try {
+              await updateFinca(fincaEditadaId, f);
+              setModal(null);
+              setFincaEditadaId(null);
+              showToast('Finca actualizada correctamente');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo actualizar la finca', true);
+            }
+          }}
+        />
+      )}
+      {cicloACerrar && (
+        <CerrarCicloModal
+          ciclo={cicloACerrar}
+          calculo={calcularSeguro(data, cicloACerrar)}
+          onClose={() => setCicloACerrar(null)}
+          onRegistrarSalida={() => {
+            const ciclo = cicloACerrar;
+            setCicloACerrar(null);
+            irAProduccion(ciclo.lote_id, ciclo.id);
+          }}
+          onConfirm={async (fechaFin) => {
+            try {
+              await updateCicloEstado(cicloACerrar.id, { estado: 'Finalizado', fecha_fin: fechaFin });
+              setCicloACerrar(null);
+              showToast('Ciclo finalizado');
+            } catch (caughtError) {
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo finalizar el ciclo', true);
             }
           }}
         />
@@ -315,23 +443,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
               setModal(null);
               showToast('Ciclo creado correctamente');
             } catch (caughtError) {
-              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el ciclo');
-            }
-          }}
-        />
-      )}
-      {modal === 'municipio' && fincaMunicipioId && (
-        <FincaMunicipioModal
-          finca={data.fincas.find((finca) => finca.id === fincaMunicipioId)}
-          onClose={() => setModal(null)}
-          onSave={async (codMun) => {
-            try {
-              await updateFincaCodMun(fincaMunicipioId, codMun);
-              setModal(null);
-              setFincaMunicipioId(null);
-              showToast('Municipio DANE actualizado correctamente');
-            } catch (caughtError) {
-              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo actualizar el municipio DANE');
+              showToast(caughtError instanceof Error ? caughtError.message : 'No se pudo crear el ciclo', true);
             }
           }}
         />
@@ -339,10 +451,12 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-50">
-          <div className="flex items-center gap-2 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg">
-            <CheckCircle2 className="w-5 h-5 text-green-400" />
-            <span className="text-sm font-medium">{toast}</span>
+        <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw]">
+          <div className={`flex items-center gap-2 text-white px-4 py-3 rounded-lg shadow-lg ${toast.error ? 'bg-red-700' : 'bg-gray-900'}`}>
+            {toast.error
+              ? <AlertTriangle className="w-5 h-5 flex-shrink-0 text-red-100" />
+              : <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-green-400" />}
+            <span className="text-sm font-medium">{toast.mensaje}</span>
           </div>
         </div>
       )}
@@ -354,7 +468,7 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
     const finca = lote ? getFinca(data, lote.finca_id) : undefined;
     const ciclos = data.ciclos_productivos.filter((c) => c.lote_id === loteId);
     const cicloReciente = ciclos[ciclos.length - 1];
-    const calc = cicloReciente ? calcularCiclo(data, cicloReciente) : null;
+    const calc = cicloReciente ? calcularSeguro(data, cicloReciente) : null;
     const cultivo = cicloReciente ? getCultivo(data, cicloReciente.cultivo_id) : undefined;
 
     const insumos = useMemo(
@@ -399,7 +513,18 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                       {cicloReciente.estado}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">Inicio: {cicloReciente.fecha_inicio}{cicloReciente.fecha_fin ? ` · Fin: ${cicloReciente.fecha_fin}` : ''}</p>
+                  <p className="text-xs text-gray-500">Inicio: {formatDate(cicloReciente.fecha_inicio)}{cicloReciente.fecha_fin ? ` · Fin: ${formatDate(cicloReciente.fecha_fin)}` : ''}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[11px] text-gray-500">Cosechado</p>
+                    <p className="text-sm font-semibold text-gray-900 tnum">{calc.Q > 0 ? `${formatCantidad(calc.Q)} kg` : '—'}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <p className="text-[11px] text-gray-500">Ingresos por ventas</p>
+                    <p className="text-sm font-semibold text-gray-900 tnum">{calc.Qv > 0 ? formatCOP(calc.ingresosRealizados) : '—'}</p>
+                  </div>
                 </div>
 
                 <div className="bg-[#2E7D32]/5 rounded-lg p-4 text-center">
@@ -461,6 +586,69 @@ export default function MisLotes({ onNavigate }: MisLotesProps) {
                 </div>
               </>
             )}
+
+            {/* Todos los ciclos del lote */}
+            <div>
+              <h5 className="text-sm font-semibold text-gray-900 mb-2">Ciclos de este lote</h5>
+              {ciclos.length === 0 ? (
+                <p className="text-sm text-gray-500">Este lote aún no tiene ciclos. Crea uno con “Nuevo ciclo”.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {[...ciclos].reverse().map((c) => {
+                    const cc = calcularSeguro(data, c);
+                    const cl = getCultivo(data, c.cultivo_id);
+                    return (
+                      <li key={c.id} className="rounded-lg border border-gray-200 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-900">{cl?.nombre ?? 'Cultivo'}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${c.estado === 'Activo' ? 'bg-green-100 text-green-800' : 'bg-gray-200 text-gray-700'}`}>
+                            {c.estado}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {formatDate(c.fecha_inicio)}{c.fecha_fin ? ` → ${formatDate(c.fecha_fin)}` : ' → en curso'}
+                          {cc ? ` · Costo ${formatCOP(cc.costoTotal)}` : ''}
+                          {cc && cc.margenRealizado !== null ? ` · Margen ${formatCOP(cc.margenRealizado)}` : ''}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => irAProduccion(c.lote_id, c.id)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                          >
+                            <Wheat className="w-3.5 h-3.5" /> Cosechas y ventas
+                          </button>
+                          {c.estado === 'Activo' ? (
+                            <button
+                              type="button"
+                              onClick={() => setCicloACerrar(c)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-[#2E7D32] hover:bg-[#2E7D32]/10"
+                            >
+                              <Flag className="w-3.5 h-3.5" /> Finalizar ciclo
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleReabrirCiclo(c)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Reabrir
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleEliminarCiclo(c)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -490,38 +678,66 @@ function FieldError({ show, message = 'Este campo es obligatorio' }: { show: boo
   return <p className="text-xs text-red-500 mt-1">{message}</p>;
 }
 
-function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { nombre: string; municipio: string; cod_mun: string | null; latitud: number; longitud: number }) => void }) {
-  const [nombre, setNombre] = useState('');
-  const [municipio, setMunicipio] = useState('');
-  const [codMun, setCodMun] = useState<string | null>(null);
-  const [latitud, setLatitud] = useState('');
-  const [longitud, setLongitud] = useState('');
+interface DatosFinca {
+  nombre: string;
+  municipio: string;
+  cod_mun: string | null;
+  latitud: number;
+  longitud: number;
+}
+
+function FincaModal({ finca, onClose, onSave }: { finca?: Finca; onClose: () => void; onSave: (f: DatosFinca) => void }) {
+  const [nombre, setNombre] = useState(finca?.nombre ?? '');
+  const [municipio, setMunicipio] = useState(finca?.municipio ?? '');
+  const [codMun, setCodMun] = useState<string | null>(finca?.cod_mun ?? null);
+  const [latitud, setLatitud] = useState(finca ? String(finca.latitud) : '');
+  const [longitud, setLongitud] = useState(finca ? String(finca.longitud) : '');
   const [errors, setErrors] = useState({ nombre: false, municipio: false, latitud: false, longitud: false });
+  const [ubicando, setUbicando] = useState(false);
+  const [errorUbicacion, setErrorUbicacion] = useState<string | null>(null);
+
+  const usarUbicacionActual = () => {
+    if (!('geolocation' in navigator)) {
+      setErrorUbicacion('Este dispositivo no permite obtener la ubicación.');
+      return;
+    }
+    setUbicando(true);
+    setErrorUbicacion(null);
+    navigator.geolocation.getCurrentPosition(
+      (posicion) => {
+        setLatitud(posicion.coords.latitude.toFixed(5));
+        setLongitud(posicion.coords.longitude.toFixed(5));
+        setUbicando(false);
+      },
+      () => {
+        setErrorUbicacion('No se pudo obtener la ubicación. Revisa el permiso de ubicación o escríbela a mano.');
+        setUbicando(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000 },
+    );
+  };
 
   const handleSave = () => {
+    const lat = Number(latitud);
+    const lon = Number(longitud);
     const e = {
       nombre: !nombre.trim(),
       municipio: !municipio.trim(),
-      latitud: latitud === '' || isNaN(Number(latitud)),
-      longitud: longitud === '' || isNaN(Number(longitud)),
+      latitud: latitud.trim() === '' || !Number.isFinite(lat) || lat < -90 || lat > 90,
+      longitud: longitud.trim() === '' || !Number.isFinite(lon) || lon < -180 || lon > 180,
     };
     setErrors(e);
     if (Object.values(e).some(Boolean)) return;
-    onSave({ nombre: nombre.trim(), municipio: municipio.trim(), cod_mun: codMun, latitud: Number(latitud), longitud: Number(longitud) });
+    onSave({ nombre: nombre.trim(), municipio: municipio.trim(), cod_mun: codMun, latitud: lat, longitud: lon });
   };
 
   return (
-    <ModalShell title="Nueva finca" onClose={onClose}>
+    <ModalShell title={finca ? 'Editar finca' : 'Nueva finca'} onClose={onClose}>
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. Finca La Montana" />
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. Finca La Montaña" />
           <FieldError show={errors.nombre} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Municipio</label>
-          <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. San Juan" />
-          <FieldError show={errors.municipio} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Municipio (DANE)</label>
@@ -532,51 +748,111 @@ function FincaModal({ onClose, onSave }: { onClose: () => void; onSave: (f: { no
               if (municipioDane) setMunicipio(municipioDane);
             }}
           />
-          <p className="text-xs text-gray-400 mt-1">Opcional. Permite comparar el ciclo con referencias históricas del municipio.</p>
+          <p className="text-xs text-gray-400 mt-1">Recomendado. Permite comparar el ciclo con la referencia histórica del municipio.</p>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Latitud</label>
-            <input value={latitud} onChange={(e) => setLatitud(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 10.25" />
-            <FieldError show={errors.latitud} />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Municipio o vereda</label>
+          <input value={municipio} onChange={(e) => setMunicipio(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]" placeholder="Ej. San Juan Nepomuceno" />
+          <FieldError show={errors.municipio} />
+        </div>
+        <div>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-sm font-medium text-gray-700">Ubicación (para el pronóstico del clima)</span>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Longitud</label>
-            <input value={longitud} onChange={(e) => setLongitud(e.target.value)} className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. -75.35" />
-            <FieldError show={errors.longitud} />
+          <button
+            type="button"
+            onClick={usarUbicacionActual}
+            disabled={ubicando}
+            className="mb-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#2E7D32] px-3 py-2 text-sm font-semibold text-[#2E7D32] hover:bg-[#2E7D32]/5 disabled:opacity-60"
+          >
+            <LocateFixed className="w-4 h-4" /> {ubicando ? 'Obteniendo ubicación…' : 'Usar mi ubicación actual'}
+          </button>
+          {errorUbicacion && <p className="mb-2 text-xs text-red-600">{errorUbicacion}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Latitud</label>
+              <input value={latitud} onChange={(e) => setLatitud(e.target.value)} inputMode="decimal" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. 10.25" />
+              <FieldError show={errors.latitud} message="Latitud entre -90 y 90" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Longitud</label>
+              <input value={longitud} onChange={(e) => setLongitud(e.target.value)} inputMode="decimal" className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32] tnum" placeholder="Ej. -75.35" />
+              <FieldError show={errors.longitud} message="Longitud entre -180 y 180" />
+            </div>
           </div>
+          <p className="mt-1 text-xs text-gray-400">Si estás en la finca, usa el botón. Si no, cópiala de Google Maps (clic derecho sobre el punto).</p>
         </div>
         <button onClick={handleSave} className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors">
-          Guardar
+          {finca ? 'Guardar cambios' : 'Guardar'}
         </button>
       </div>
     </ModalShell>
   );
 }
 
-function FincaMunicipioModal({ finca, onClose, onSave }: { finca?: Finca; onClose: () => void; onSave: (codMun: string | null) => void }) {
-  const [codMun, setCodMun] = useState<string | null>(finca?.cod_mun ?? null);
-
-  if (!finca) return null;
+function CerrarCicloModal({
+  ciclo,
+  calculo,
+  onClose,
+  onConfirm,
+  onRegistrarSalida,
+}: {
+  ciclo: CicloProductivo;
+  calculo: CicloCalculo | null;
+  onClose: () => void;
+  onConfirm: (fechaFin: string) => void;
+  onRegistrarSalida: () => void;
+}) {
+  const [fechaFin, setFechaFin] = useState(() => (hoy() < ciclo.fecha_inicio ? ciclo.fecha_inicio : hoy()));
+  const fechaInvalida = !fechaFin || fechaFin < ciclo.fecha_inicio;
+  const enBodega = calculo?.Qnv ?? 0;
+  const sinCosecha = (calculo?.Q ?? 0) === 0;
 
   return (
-    <ModalShell title="Municipio (DANE)" onClose={onClose}>
+    <ModalShell title="Finalizar ciclo" onClose={onClose}>
       <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          Finalizar el ciclo indica que la siembra terminó. Podrás seguir corrigiendo sus registros y reabrirlo si te equivocas.
+        </p>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Municipio de {finca.nombre}
-          </label>
-          <MunicipioDaneSelect value={codMun} onChange={setCodMun} />
-          <p className="text-xs text-gray-400 mt-1">
-            Opcional. Puedes dejar el selector vacío o limpiarlo para quitar la referencia DANE.
-          </p>
+          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="fecha-fin-ciclo">Fecha de cierre</label>
+          <input
+            id="fecha-fin-ciclo"
+            type="date"
+            min={ciclo.fecha_inicio}
+            value={fechaFin}
+            onChange={(e) => setFechaFin(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E7D32]"
+          />
+          <FieldError show={fechaInvalida} message={`Debe ser igual o posterior al inicio (${formatDate(ciclo.fecha_inicio)})`} />
         </div>
+        {sinCosecha && (
+          <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <p>Este ciclo no tiene cosechas registradas. Si se perdió la siembra, puedes cerrarlo igual: el costo quedará como pérdida.</p>
+          </div>
+        )}
+        {enBodega > 0 && (
+          <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div>
+              <p>
+                Quedan <strong>{formatCantidad(enBodega)} kg</strong> sin vender ni registrar como salida. Si se consumieron,
+                se guardaron como semilla o se perdieron, regístralos para que el resultado del ciclo sea real.
+              </p>
+              <button type="button" onClick={onRegistrarSalida} className="mt-1 font-semibold underline">
+                Registrar salida
+              </button>
+            </div>
+          </div>
+        )}
         <button
           type="button"
-          onClick={() => onSave(codMun)}
-          className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors"
+          disabled={fechaInvalida}
+          onClick={() => onConfirm(fechaFin)}
+          className="w-full py-2.5 rounded-lg bg-[#2E7D32] text-white text-sm font-semibold hover:bg-[#256628] transition-colors disabled:opacity-50"
         >
-          Guardar
+          Finalizar ciclo
         </button>
       </div>
     </ModalShell>

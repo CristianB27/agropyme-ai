@@ -84,7 +84,23 @@ export interface Unidad {
   id: EntityId;
   nombre: string;
   factor_a_kg: number;
+  /** Sólo las unidades de peso se aceptan en cosechas, ventas y salidas. */
+  es_masa: boolean;
 }
+
+export type CalidadProducto = 'primera' | 'segunda' | 'tercera' | 'sin_clasificar';
+
+export type TipoComprador =
+  | 'intermediario'
+  | 'cooperativa'
+  | 'plaza_mercado'
+  | 'industria'
+  | 'consumidor_final'
+  | 'otro';
+
+export type EstadoPago = 'pagado' | 'por_cobrar';
+
+export type TipoSalida = 'autoconsumo' | 'alimento_animal' | 'semilla' | 'donacion' | 'perdida';
 
 export interface Cosecha {
   id: EntityId;
@@ -95,6 +111,8 @@ export interface Cosecha {
   unidad_id: EntityId;
   unidad: string;
   cantidad_kg: number;
+  calidad: CalidadProducto;
+  descripcion: string | null;
 }
 
 export interface Venta {
@@ -106,8 +124,26 @@ export interface Venta {
   unidad_id: EntityId;
   unidad: string;
   cantidad_kg: number;
+  /** Siempre en COP por kg. */
   precio_unitario: number;
   comprador: string | null;
+  calidad: CalidadProducto;
+  tipo_comprador: TipoComprador | null;
+  estado_pago: EstadoPago;
+}
+
+/** Producción que sale del ciclo sin venderse (autoconsumo, semilla, pérdida…). */
+export interface SalidaProduccion {
+  id: EntityId;
+  user_id: EntityId;
+  ciclo_id: EntityId;
+  fecha: string;
+  tipo: TipoSalida;
+  cantidad: number;
+  unidad_id: EntityId;
+  unidad: string;
+  cantidad_kg: number;
+  descripcion: string | null;
 }
 
 export interface PronosticoDia {
@@ -136,5 +172,6 @@ export type AppData = {
   unidades: Unidad[];
   cosechas: Cosecha[];
   ventas: Venta[];
+  salidas_produccion: SalidaProduccion[];
   clima: ClimaFinca[];
 };

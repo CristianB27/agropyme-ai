@@ -6,8 +6,10 @@ import {
 import {
   TrendingUp, DollarSign, Wheat, Scale, Percent, CloudRain, AlertTriangle,
   Droplets, Thermometer, ShoppingCart, Package, Info, Calculator, ChevronDown, RefreshCw,
+  HandCoins, Tag,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import type { ScreenId } from '../components/Layout';
 import ReferenciaRendimientoMaizCard from '../components/ReferenciaRendimientoMaizCard';
 import type { ClimaFinca, Finca } from '../types';
 import {
@@ -17,11 +19,25 @@ import {
   getLote,
   getFinca,
   getCultivo,
+  resumirPorCalidad,
+  resumirSalidasPorTipo,
+  type CicloCalculo,
 } from '../utils/calculos';
-import { formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../utils/format';
+import { etiquetaCalidad, etiquetaTipoSalida } from '../utils/cosechasVentas';
+import type { AppData, CicloProductivo } from '../types';
+import { formatCantidad, formatCOP, formatCOPDecimals, formatNumber, formatPercent } from '../utils/format';
 import { esCultivoMaiz } from '../utils/rendimientoMaiz';
 
 const COLORS = ['#2E7D32', '#66BB6A', '#A5D6A7'];
+
+/** Evita que un dato inconsistente rompa toda la pantalla. */
+function calcularSeguro(data: AppData, ciclo: CicloProductivo): CicloCalculo | null {
+  try {
+    return calcularCiclo(data, ciclo);
+  } catch {
+    return null;
+  }
+}
 
 interface ClimaCardProps {
   finca?: Finca;
@@ -127,20 +143,28 @@ function ClimaCard({ finca, clima, loading, onRetry }: ClimaCardProps) {
   );
 }
 
-export default function Dashboard() {
+interface DashboardProps {
+  onNavigate: (id: ScreenId) => void;
+}
+
+export default function Dashboard({ onNavigate }: DashboardProps) {
   const { data, loading, climaLoading, error, refresh, refreshClima } = useApp();
   const [selectedCicloId, setSelectedCicloId] = useState<string>('');
-  const [precioEstimado, setPrecioEstimado] = useState('1150');
+  // Precio estimado editado por el usuario para un ciclo concreto.
+  const [precioEditado, setPrecioEditado] = useState<{ cicloId: string; valor: string } | null>(null);
   const [showDetalles, setShowDetalles] = useState(false);
 
-  useEffect(() => {
-    if (!selectedCicloId && data.ciclos_productivos[0]) {
-      setSelectedCicloId(data.ciclos_productivos[0].id);
-    }
-  }, [data.ciclos_productivos, selectedCicloId]);
+  const ultimoCiclo = data.ciclos_productivos[data.ciclos_productivos.length - 1];
 
-  const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId) ?? data.ciclos_productivos[0];
-  const calc = useMemo(() => ciclo ? calcularCiclo(data, ciclo) : null, [data, ciclo]);
+  useEffect(() => {
+    const existe = data.ciclos_productivos.some((c) => c.id === selectedCicloId);
+    if (!existe && ultimoCiclo) {
+      setSelectedCicloId(ultimoCiclo.id);
+    }
+  }, [data.ciclos_productivos, selectedCicloId, ultimoCiclo]);
+
+  const ciclo = data.ciclos_productivos.find((c) => c.id === selectedCicloId) ?? ultimoCiclo;
+  const calc = useMemo(() => ciclo ? calcularSeguro(data, ciclo) : null, [data, ciclo]);
   const cultivoCiclo = ciclo ? getCultivo(data, ciclo.cultivo_id) : undefined;
   const lote = ciclo ? getLote(data, ciclo.lote_id) : undefined;
   const cycleFinca = lote ? getFinca(data, lote.finca_id) : undefined;
@@ -170,6 +194,13 @@ export default function Dashboard() {
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
           <h3 className="text-lg font-bold text-gray-900">Aún no tienes ciclos productivos</h3>
           <p className="mt-2 text-sm text-gray-500">Crea una finca, un lote y un ciclo en “Mis Lotes” para ver tu resumen financiero.</p>
+          <button
+            type="button"
+            onClick={() => onNavigate('lotes')}
+            className="mt-4 rounded-lg bg-[#2E7D32] px-4 py-2 text-sm font-semibold text-white hover:bg-[#256628] focus:outline-none focus:ring-2 focus:ring-[#2E7D32] focus:ring-offset-2"
+          >
+            Ir a Mis Lotes
+          </button>
         </div>
         <ClimaCard
           finca={finca}
@@ -182,14 +213,25 @@ export default function Dashboard() {
   }
 
   const barData = data.ciclos_productivos.map((c) => {
-    const cc = calcularCiclo(data, c);
+    const cc = calcularSeguro(data, c);
     const cl = getCultivo(data, c.cultivo_id);
     const lt = getLote(data, c.lote_id);
     return {
       name: `${cl?.nombre?.slice(0, 4)} ${lt?.nombre?.slice(0, 6)}`,
-      costo: cc.costoTotal,
+      costo: cc?.costoTotal ?? 0,
     };
   });
+
+  const porCalidad = resumirPorCalidad(data, ciclo.id);
+  const salidasPorTipo = resumirSalidasPorTipo(data, ciclo.id);
+
+  // El precio de referencia para proyectar es el promedio de lo que ya se
+  // vendió; si aún no hay ventas, el usuario debe escribirlo.
+  const precioSugerido = calc.precioPromedioVenta !== null
+    ? String(Math.round(calc.precioPromedioVenta))
+    : '';
+  const precioEstimado = precioEditado?.cicloId === ciclo.id ? precioEditado.valor : precioSugerido;
+  const setPrecioEstimado = (valor: string) => setPrecioEditado({ cicloId: ciclo.id, valor });
 
   const pieData = [
     { name: 'Insumos', value: calc?.costoInsumos ?? 0 },
@@ -221,6 +263,11 @@ export default function Dashboard() {
       icon: ShoppingCart,
       color: '#0277BD',
       parcial: calc.esParcial,
+      hint: calc.Qv === 0
+        ? 'Registra tus ventas en “Cosechas y Ventas” para calcular los ingresos.'
+        : calc.ingresosPorCobrar > 0
+          ? `De estos, ${formatCOP(calc.ingresosPorCobrar)} están por cobrar.`
+          : undefined,
     },
     {
       label: 'Rentabilidad sobre costos',
@@ -240,10 +287,17 @@ export default function Dashboard() {
       parcial: false,
     },
     {
-      label: 'Costo unitario producido (C/Q)',
-      value: calc.costoUnitario !== null ? `${formatCOPDecimals(calc.costoUnitario)}/${calc.unidad}` : 'No disponible',
+      label: calc.Qperdida > 0 ? 'Costo por kg aprovechable' : 'Costo por kg producido',
+      value: calc.costoUnitario !== null ? `${formatCOPDecimals(calc.costoUnitario)}/kg` : 'No disponible',
       icon: Wheat,
       color: '#F57C00',
+      parcial: false,
+    },
+    {
+      label: 'Precio promedio de venta',
+      value: calc.precioPromedioVenta !== null ? `${formatCOPDecimals(calc.precioPromedioVenta)}/kg` : 'No disponible',
+      icon: Tag,
+      color: '#0277BD',
       parcial: false,
     },
     {
@@ -255,17 +309,31 @@ export default function Dashboard() {
     },
     {
       label: 'Rendimiento (kg/ha)',
-      value: calc.rendimiento !== null ? `${formatNumber(calc.rendimiento, 0)} ${calc.unidad}/ha` : 'No disponible',
+      value: calc.rendimiento !== null ? `${formatNumber(calc.rendimiento, 0)} kg/ha` : 'No disponible',
       icon: TrendingUp,
       color: '#00838F',
       parcial: false,
     },
     {
-      label: 'Cosechado / Vendido / Sin vender',
-      value: calc.Q > 0 ? `${formatNumber(calc.Q)} / ${formatNumber(calc.Qv)} / ${formatNumber(calc.Qnv)} ${calc.unidad}` : 'No disponible',
+      label: 'Cosechado / Vendido / En bodega (kg)',
+      value: calc.Q > 0 ? `${formatCantidad(calc.Q)} / ${formatCantidad(calc.Qv)} / ${formatCantidad(calc.Qnv)}` : 'No disponible',
       icon: Package,
       color: '#5D4037',
       parcial: calc.esParcial,
+    },
+    {
+      label: 'Uso propio / Pérdidas (kg)',
+      value: calc.Q > 0 ? `${formatCantidad(calc.QusoPropio)} / ${formatCantidad(calc.Qperdida)}` : 'No disponible',
+      icon: Package,
+      color: '#EF6C00',
+      parcial: false,
+    },
+    {
+      label: 'Ventas por cobrar',
+      value: calc.Qv > 0 ? formatCOP(calc.ingresosPorCobrar) : 'No disponible',
+      icon: HandCoins,
+      color: '#F9A825',
+      parcial: false,
     },
     {
       label: 'Margen realizado',
@@ -312,7 +380,9 @@ export default function Dashboard() {
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
           <p className="text-sm text-amber-900">
-            Resultado parcial: hay <strong>{formatNumber(calc.Qnv)} {calc.unidad}</strong> sin vender.
+            Resultado parcial: hay <strong>{formatCantidad(calc.Qnv)} kg</strong> en bodega sin vender.
+            Si parte ya se consumió o se perdió, regístrala como salida en{' '}
+            <button type="button" onClick={() => onNavigate('produccion')} className="font-semibold underline">Cosechas y Ventas</button>.
           </p>
         </div>
       )}
@@ -333,6 +403,9 @@ export default function Dashboard() {
               </div>
               <p className="text-xs text-gray-500 mb-1">{ind.label}</p>
               <p className="text-lg md:text-xl font-bold text-gray-900 tnum leading-tight">{ind.value}</p>
+              {'hint' in ind && ind.hint && (
+                <p className="mt-1 text-[11px] leading-relaxed text-gray-500">{ind.hint}</p>
+              )}
             </div>
           );
         })}
@@ -347,14 +420,19 @@ export default function Dashboard() {
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">parcial</span>
             )}
           </div>
-          <p className="text-xs text-gray-500 mb-1">Sin vender</p>
+          <p className="text-xs text-gray-500 mb-1">En bodega sin vender</p>
           {calc.Q > 0 ? (
             <>
-              <p className="text-lg md:text-xl font-bold text-gray-900 tnum leading-tight">{formatNumber(calc.Qnv)} {calc.unidad}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">de {formatNumber(calc.Q)} {calc.unidad} cosechados</p>
+              <p className="text-lg md:text-xl font-bold text-gray-900 tnum leading-tight">{formatCantidad(calc.Qnv)} kg</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">de {formatCantidad(calc.Q)} kg cosechados</p>
             </>
           ) : (
-            <p className="text-lg md:text-xl font-bold text-gray-900 leading-tight">No disponible</p>
+            <>
+              <p className="text-lg md:text-xl font-bold text-gray-900 leading-tight">No disponible</p>
+              <button type="button" onClick={() => onNavigate('produccion')} className="mt-1 text-[11px] font-semibold text-[#2E7D32] hover:underline">
+                Registrar cosecha
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -404,6 +482,64 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
+
+          {/* Producción por calidad y salidas */}
+          {(porCalidad.length > 0 || salidasPorTipo.length > 0) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {porCalidad.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Producción y ventas por calidad</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-gray-500">
+                          <th className="text-left py-1.5 font-medium">Calidad</th>
+                          <th className="text-right py-1.5 font-medium">Cosechado</th>
+                          <th className="text-right py-1.5 font-medium">Vendido</th>
+                          <th className="text-right py-1.5 font-medium">Precio prom.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {porCalidad.map((fila) => (
+                          <tr key={fila.calidad} className="border-t border-gray-100">
+                            <td className="py-2 text-gray-800">{etiquetaCalidad(fila.calidad)}</td>
+                            <td className="py-2 text-right tnum text-gray-700">{formatCantidad(fila.cosechadoKg)} kg</td>
+                            <td className="py-2 text-right tnum text-gray-700">{formatCantidad(fila.vendidoKg)} kg</td>
+                            <td className="py-2 text-right tnum text-gray-900 font-medium">
+                              {fila.precioPromedio !== null ? `${formatCOP(fila.precioPromedio)}/kg` : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {salidasPorTipo.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-200 p-4 md:p-6">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Producción que no se vendió</h3>
+                  <ul className="space-y-2">
+                    {salidasPorTipo.map((fila) => (
+                      <li key={fila.tipo} className="flex justify-between text-sm">
+                        <span className="text-gray-700">{etiquetaTipoSalida(fila.tipo)}</span>
+                        <span className="tnum font-medium text-gray-900">{formatCantidad(fila.kg)} kg</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {calc.costoUsoPropio !== null && (
+                    <p className="mt-3 text-xs text-gray-500">
+                      Producir lo que se usó en la finca o en el hogar costó {formatCOP(calc.costoUsoPropio)}.
+                    </p>
+                  )}
+                  {calc.Qperdida > 0 && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Las pérdidas ({formatPercent((calc.Qperdida / calc.Q) * 100)} de lo cosechado) encarecen cada kg que sí se aprovechó.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Referencia histórica de rendimiento para maíz */}
           {ciclo && esCultivoMaiz(cultivoCiclo?.nombre) && (
@@ -482,18 +618,23 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad sin vender</label>
-                  <p className="text-sm font-bold text-gray-900 tnum">{formatNumber(calc.Qnv)} {calc.unidad}</p>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad en bodega</label>
+                  <p className="text-sm font-bold text-gray-900 tnum">{formatCantidad(calc.Qnv)} kg</p>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Precio estimado (COP/{calc.unidad})</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Precio estimado (COP/kg)</label>
                   <input
                     type="number"
                     value={precioEstimado}
                     onChange={(e) => setPrecioEstimado(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#1565C0] tnum"
-                    placeholder="Ej. 1150"
+                    placeholder="Precio esperado por kg"
                   />
+                  <p className="mt-1 text-[10px] text-gray-500">
+                    {calc.precioPromedioVenta !== null
+                      ? `Sugerido: tu precio promedio de venta (${formatCOP(calc.precioPromedioVenta)}/kg).`
+                      : 'Aún no hay ventas: escribe el precio que esperas recibir por kg.'}
+                  </p>
                 </div>
               </div>
 

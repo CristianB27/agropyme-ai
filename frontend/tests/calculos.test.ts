@@ -62,17 +62,30 @@ const data: AppData = {
     unidad: 'bulto',
     costo_unitario: 3_466_000,
   }],
-  mano_de_obra: [{
-    id: 'jornal-1',
-    user_id: userId,
-    ciclo_id: 'ciclo-1',
-    actividad_id: 'actividad-1',
-    fecha: '2026-01-03',
-    nombre: 'Siembra',
-    descripcion: null,
-    num_jornales: 22.6,
-    valor_jornal: 150_000,
-  }],
+  mano_de_obra: [
+    {
+      id: 'jornal-1',
+      user_id: userId,
+      ciclo_id: 'ciclo-1',
+      actividad_id: 'actividad-1',
+      fecha: '2026-01-03',
+      nombre: 'Siembra',
+      descripcion: null,
+      num_jornales: 42,
+      valor_jornal: 45_000,
+    },
+    {
+      id: 'jornal-2',
+      user_id: userId,
+      ciclo_id: 'ciclo-1',
+      actividad_id: 'actividad-1',
+      fecha: '2026-01-04',
+      nombre: 'Manejo del cultivo',
+      descripcion: null,
+      num_jornales: 30,
+      valor_jornal: 50_000,
+    },
+  ],
   unidades: [],
   cosechas: [{
     id: 'cosecha-1',
@@ -83,6 +96,8 @@ const data: AppData = {
     unidad_id: 'unidad-kg',
     unidad: 'kg',
     cantidad_kg: 11_250,
+    calidad: 'sin_clasificar',
+    descripcion: null,
   }],
   ventas: [
     {
@@ -96,6 +111,9 @@ const data: AppData = {
       cantidad_kg: 4_000,
       precio_unitario: 1_100,
       comprador: 'Mercado A',
+      calidad: 'sin_clasificar',
+      tipo_comprador: null,
+      estado_pago: 'pagado',
     },
     {
       id: 'venta-2',
@@ -108,6 +126,9 @@ const data: AppData = {
       cantidad_kg: 2_000,
       precio_unitario: 1_100,
       comprador: 'Mercado B',
+      calidad: 'sin_clasificar',
+      tipo_comprador: null,
+      estado_pago: 'pagado',
     },
     {
       id: 'venta-3',
@@ -120,8 +141,12 @@ const data: AppData = {
       cantidad_kg: 4_500,
       precio_unitario: 1_150,
       comprador: 'Mercado C',
+      calidad: 'sin_clasificar',
+      tipo_comprador: null,
+      estado_pago: 'pagado',
     },
   ],
+  salidas_produccion: [],
   clima: [],
 };
 
