@@ -12,9 +12,9 @@ insert into public.fincas (id, user_id, nombre, municipio, latitud, longitud)
 values ('aaaaaaaa-0000-4000-8000-000000000001', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         'Finca de prueba A', 'María la Baja', 9.98, -75.30);
 
-insert into public.lotes (id, user_id, finca_id, nombre, area_ha)
+insert into public.lotes (id, user_id, finca_id, nombre, area_ha, municipio)
 values ('aaaaaaaa-0000-4000-8000-000000000002', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-        'aaaaaaaa-0000-4000-8000-000000000001', 'Lote de prueba A', 1.0);
+        'aaaaaaaa-0000-4000-8000-000000000001', 'Lote de prueba A', 1.0, 'Prueba');
 
 insert into public.proveedores (id, user_id, nombre)
 values ('aaaaaaaa-0000-4000-8000-000000000003', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -70,7 +70,7 @@ begin
     raise exception 'A no leyó exactamente sus propios datos';
   end if;
   if (select count(*) from public.cultivos) <> 4
-     or (select count(*) from public.unidades) <> 5 then
+     or (select count(*) from public.unidades) <> 6 then
     raise exception 'Los catálogos compartidos no están disponibles';
   end if;
 end;

@@ -9,9 +9,9 @@ select set_config('request.jwt.claim.sub', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee
 insert into public.fincas (id, user_id, nombre, municipio, latitud, longitud)
 values ('eeeeeeee-0000-4000-8000-000000000001', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
         'Finca de prueba CRUD', 'Prueba', 1, -74);
-insert into public.lotes (id, user_id, finca_id, nombre, area_ha)
+insert into public.lotes (id, user_id, finca_id, nombre, area_ha, municipio)
 values ('eeeeeeee-0000-4000-8000-000000000002', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-        'eeeeeeee-0000-4000-8000-000000000001', 'Lote de prueba CRUD', 1);
+        'eeeeeeee-0000-4000-8000-000000000001', 'Lote de prueba CRUD', 1, 'Prueba');
 insert into public.ciclos (id, user_id, lote_id, cultivo_id, fecha_inicio, estado)
 values ('eeeeeeee-0000-4000-8000-000000000003', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
         'eeeeeeee-0000-4000-8000-000000000002', '10000000-0000-0000-0000-000000000001',
