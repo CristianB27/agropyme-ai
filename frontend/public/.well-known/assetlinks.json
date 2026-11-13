@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.agropyme.app",
+        "sha256_cert_fingerprints": ["F4:47:09:78:BB:CB:EB:C6:5B:3C:C7:15:DE:7C:64:30:CF:F9:9A:B5:D4:62:22:FE:5E:4E:D4:8B:62:89:91:11"]
+      }
+    }]
