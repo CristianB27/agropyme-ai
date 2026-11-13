@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2E7D32" />
+    <title>Sin conexión · AgroPyme AI</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f9fafb;
+        color: #111827;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      img { width: 72px; height: 72px; border-radius: 16px; }
+      h1 { font-size: 20px; margin: 20px 0 8px; }
+      p { color: #4b5563; margin: 0 0 24px; line-height: 1.5; max-width: 320px; }
+      button {
+        background: #2e7d32;
+        color: #fff;
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>Sin conexión</h1>
+      <p>AgroPyme AI necesita internet para consultar y guardar tus datos. Revisa la señal e intenta de nuevo.</p>
+      <button type="button" onclick="location.reload()">Reintentar</button>
+    </main>
+  </body>
+</html>
