@@ -1,11 +1,7 @@
 import { askAnthropic } from "./anthropic.ts";
 import { AuthenticationError, loadUserData } from "./data.ts";
 import { deterministicAnswer } from "./fallback.ts";
-import {
-  isUnsafeAgroAdvice,
-  predictModel,
-  resolveAssistantIntent,
-} from "./model.ts";
+import { classifyQuestion } from "./model.ts";
 import { buildDataSummary } from "./summary.ts";
 import type {
   AssistantRequest,
@@ -124,10 +120,7 @@ Deno.serve(async (request: Request) => {
     const userData = await loadUserData(accessToken);
     const summary = buildDataSummary(userData, parsed.clima);
 
-    const prediction = predictModel(parsed.question);
-    const intent = resolveAssistantIntent(parsed.question, prediction.intent);
-    const unsafe = isUnsafeAgroAdvice(parsed.question);
-    const effectiveIntent = unsafe ? "fuera_de_alcance" : intent;
+    const effectiveIntent = classifyQuestion(parsed.question);
 
     if (effectiveIntent === "fuera_de_alcance") {
       const response: AssistantResponse = {

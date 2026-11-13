@@ -6,8 +6,6 @@ Aplicación web para que pequeños y medianos productores agrícolas sepan **cu�
 - **Proyecto académico:** Proyecto de Ingeniería I (NRC 1236), Universidad Tecnológica de Bolívar. Integrantes: Cristian Matteo Benitez Montes y Santiago Payares.
 - **Estado:** avance funcional y probado (Avances 1 a 5). No es una versión 1.0 ni un producto comercial.
 
-> Para revisar o editar el informe [`IETR1433_Lab.tex`](IETR1433_Lab.tex), lee primero [`docs/guia_informe_latex.md`](docs/guia_informe_latex.md). Allí están las reglas editoriales, el detalle metodológico del ML y la lista de afirmaciones del informe que ya no coinciden con el código.
-
 ## Contenido
 
 1. [Cómo funciona](#1-cómo-funciona)
@@ -163,7 +161,7 @@ Navegador (React 18 + TypeScript + Vite + Tailwind)
 
 El pipeline está en [`ml/`](ml/) y el detalle metodológico en la guía del informe.
 
-**Asistente.** No usa un modelo de lenguaje externo. Un clasificador local (regresión logística exportada a TypeScript) identifica el tipo de pregunta entre 13 intenciones: costos, costo por ha, costo por kg, jornales, insumos, ventas, rentabilidad, producción, comparación de ciclos, clima, explicación de indicadores, saludo y fuera de alcance. Luego responde con cifras calculadas sobre los datos reales del usuario. Por seguridad rechaza pedidos de recomendaciones o dosis de agroquímicos. El archivo [`anthropic.ts`](supabase/functions/asistente/anthropic.ts) es código heredado que no se usa: no hay ni se debe configurar `ANTHROPIC_API_KEY`.
+**Asistente.** No usa un modelo de lenguaje externo. Un clasificador local (regresión logística exportada a TypeScript) identifica el tipo de pregunta entre 13 intenciones: costos, costo por ha, costo por kg, jornales, insumos, ventas, rentabilidad, producción, comparación de ciclos, clima, explicación de indicadores, saludo y fuera de alcance. Luego responde con cifras calculadas sobre los datos reales del usuario. El clasificador se entrena con [`scripts/asistente/entrenar.py`](scripts/asistente/entrenar.py) a partir de unas 11.700 frases generadas desde [`datos_entrenamiento.py`](scripts/asistente/datos_entrenamiento.py) (formas de preguntar escritas a mano, con saludos, cultivos, lotes y errores de escritura simulados). Se evalúa con dos bancos de 260 preguntas redactadas aparte (`testdata/benchmark_dev.tsv` y `testdata/benchmark_final.tsv`): acierta 98,5 % en ambos, frente a 71 % y 69 % del clasificador anterior. Esos bancos los escribió el mismo equipo que escribió los datos, así que con usuarios reales se debe esperar menos. Por seguridad rechaza pedidos de recomendaciones o dosis de agroquímicos. El archivo [`anthropic.ts`](supabase/functions/asistente/anthropic.ts) es código heredado que no se usa: no hay ni se debe configurar `ANTHROPIC_API_KEY`.
 
 ## 7. Estado de los requisitos y pendientes
 
@@ -266,8 +264,7 @@ Se pierden sólo los datos que dependen de la migración: salidas sin venta, cal
 ├─ IETR1433_Lab.tex              informe académico (Avances 1 a 5)
 ├─ docs/
 │  ├─ esquema.md                 esquema de datos, RLS, triggers y fórmulas
-│  ├─ guia_informe_latex.md      guía para revisar/editar el informe y detalle del ML
-│  └─ trazabilidad_documento.md  evidencia del corte del 31/10/2026
+│  └─ overleaf/agropyme_negocio.tex  documento interno para entender el negocio
 ├─ frontend/
 │  ├─ src/screens/               Auth, Dashboard, MisLotes, RegistroCostos, RegistroProduccion, AsistenteIA
 │  ├─ src/components/            layout, modales, selector DANE, tarjeta de maíz
@@ -281,10 +278,10 @@ Se pierden sólo los datos que dependen de la migración: salidas sin venta, cal
 │  ├─ tests/                     pruebas SQL (transaccionales)
 │  └─ functions/asistente/       Edge Function: datos, resumen, modelo, fallback, pruebas
 ├─ ml/                           pipeline de rendimiento de maíz y reportes
-└─ scripts/export_assistant_model.py   exporta el clasificador sklearn a TypeScript
+└─ scripts/asistente/           datos, entrenamiento y exportación del clasificador del asistente
 ```
 
-No versionados: `data/` (datos EVA y artefactos), `ml/models/` y `experimentos/asistente_propio/` (fuentes del clasificador). [`model_data.ts`](supabase/functions/asistente/model_data.ts) es generado: no editarlo a mano.
+No versionados: `data/` (datos EVA y artefactos), `ml/models/`. [`model_data.ts`](supabase/functions/asistente/model_data.ts) y `testdata/model_parity.json` los genera `scripts/asistente/entrenar.py`: no editarlos a mano.
 
 ## 13. Glosario
 

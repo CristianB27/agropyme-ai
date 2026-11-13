@@ -21,30 +21,32 @@ export interface ModelPrediction {
   probabilities: Record<CanonicalIntent, number>;
 }
 
+/**
+ * Clasificador de intenciones entrenado con scripts/asistente/entrenar.py:
+ * TF-IDF de palabras (1-2) y de caracteres (3-5), cada bloque normalizado
+ * por separado, y regresión logística multinomial. Replica la inferencia de
+ * scikit-learn; testdata/model_parity.json comprueba que coincida.
+ */
 interface ModelData {
   version: number;
-  sourceModelSha256: string;
-  threshold: number;
-  canonicalIntents: CanonicalIntent[];
+  trainingRows: number;
   classes: CanonicalIntent[];
-  wordVocabulary: Record<string, number>;
+  wordVocabulary: string[];
   wordIdf: string;
-  charVocabulary: Record<string, number>;
+  charVocabulary: string[];
   charIdf: string;
-  ruleGroups: Record<string, readonly string[]>;
-  ruleVocabulary: Record<string, number>;
   coefficients: string;
   intercepts: string;
-  calibratorA: string;
-  calibratorB: string;
 }
 
 const data = MODEL_DATA as unknown as ModelData;
-const wordVocabulary = new Map(Object.entries(data.wordVocabulary));
-const charVocabulary = new Map(Object.entries(data.charVocabulary));
-const ruleVocabulary = new Map(Object.entries(data.ruleVocabulary));
-const canonicalIntents = data.canonicalIntents;
 const classes = data.classes;
+const wordVocabulary = new Map(
+  data.wordVocabulary.map((term, index) => [term, index]),
+);
+const charVocabulary = new Map(
+  data.charVocabulary.map((term, index) => [term, index]),
+);
 
 function decodeFloat64(encoded: string, length: number): Float64Array {
   const binary = atob(encoded);
@@ -60,16 +62,14 @@ function decodeFloat64(encoded: string, length: number): Float64Array {
   return values;
 }
 
+const featureCount = wordVocabulary.size + charVocabulary.size;
 const wordIdf = decodeFloat64(data.wordIdf, wordVocabulary.size);
 const charIdf = decodeFloat64(data.charIdf, charVocabulary.size);
 const coefficients = decodeFloat64(
   data.coefficients,
-  classes.length *
-    (wordVocabulary.size + charVocabulary.size + ruleVocabulary.size),
+  classes.length * featureCount,
 );
 const intercepts = decodeFloat64(data.intercepts, classes.length);
-const calibratorA = decodeFloat64(data.calibratorA, classes.length);
-const calibratorB = decodeFloat64(data.calibratorB, classes.length);
 
 export function normalizeModelText(value: string): string {
   return value
@@ -97,8 +97,7 @@ function charWbNgrams(normalized: string): string[] {
   const result: string[] = [];
   for (const word of normalized.split(/\s+/u)) {
     if (!word) continue;
-    const padded = ` ${word} `;
-    const characters = [...padded];
+    const characters = [...` ${word} `];
     for (let size = 3; size <= 5; size += 1) {
       let offset = 0;
       result.push(characters.slice(0, size).join(""));
@@ -112,27 +111,23 @@ function charWbNgrams(normalized: string): string[] {
   return result;
 }
 
-function countTerms(terms: string[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const term of terms) {
-    counts.set(term, (counts.get(term) ?? 0) + 1);
-  }
-  return counts;
-}
-
 function weightedTfidf(
-  counts: Map<string, number>,
+  terms: string[],
   vocabulary: Map<string, number>,
   idf: Float64Array,
 ): Map<number, number> {
-  const weighted = new Map<number, number>();
-  for (const [term, count] of counts) {
+  const counts = new Map<number, number>();
+  for (const term of terms) {
     const index = vocabulary.get(term);
-    if (index === undefined) continue;
-    weighted.set(index, (1 + Math.log(count)) * idf[index]);
+    if (index !== undefined) counts.set(index, (counts.get(index) ?? 0) + 1);
   }
+  const weighted = new Map<number, number>();
   let squaredNorm = 0;
-  for (const value of weighted.values()) squaredNorm += value * value;
+  for (const [index, count] of counts) {
+    const value = (1 + Math.log(count)) * idf[index];
+    weighted.set(index, value);
+    squaredNorm += value * value;
+  }
   const norm = Math.sqrt(squaredNorm);
   if (norm > 0) {
     for (const [index, value] of weighted) weighted.set(index, value / norm);
@@ -140,116 +135,66 @@ function weightedTfidf(
   return weighted;
 }
 
-function ruleFeatures(normalized: string, originalText: string): Set<string> {
-  const active = new Set<string>();
-  for (const [name, words] of Object.entries(data.ruleGroups)) {
-    if (words.some((word) => normalized.includes(word))) active.add(name);
-  }
-
-  if (/\b20\d{2}\b/u.test(normalized)) active.add("sig_ano");
-  if (
-    /\d+(?:[.,]\d+)?\s*(?:kg|kilos|kilogramos|ha|hectareas|jornales|unidades|litros)\b/u
-      .test(normalized)
-  ) {
-    active.add("sig_unidad_cantidad");
-  }
-  if (
-    /(?<!\w)(maiz|mais|yuca|yuka|name|nane|arroz)(?!\w)/u.test(normalized)
-  ) {
-    active.add("sig_cultivo");
-  }
-  if (
-    /(?<!\w)(norte|sur|rio|occidente|pradera|mirador)(?!\w)/u
-      .test(normalized)
-  ) {
-    active.add("sig_lote_finca");
-  }
-  if (originalText.includes("?")) active.add("sig_pregunta");
-
-  if (normalized.includes("arroz")) active.add("crop_arroz");
-  if (normalized.includes("maiz")) active.add("crop_maiz");
-  if (normalized.includes("name")) active.add("crop_name");
-  if (normalized.includes("yuca")) active.add("crop_yuca");
-  if (normalized.includes("norte")) active.add("lote_norte");
-  if (normalized.includes("sur")) active.add("lote_sur");
-  if (normalized.includes("rio")) active.add("lote_rio");
-  if (normalized.includes("occidente")) active.add("lote_occidente");
-  if (normalized.includes("pradera")) active.add("finca_pradera");
-  if (normalized.includes("mirador")) active.add("finca_mirador");
-  return active;
-}
-
-function expit(value: number): number {
-  if (value >= 0) {
-    return 1 / (1 + Math.exp(-value));
-  }
-  const exponential = Math.exp(value);
-  return exponential / (1 + exponential);
-}
-
 export function predictModel(question: string): ModelPrediction {
   const normalized = normalizeModelText(question);
-  const wordFeatures = weightedTfidf(
-    countTerms(wordNgrams(wordTokens(normalized))),
+  const features = weightedTfidf(
+    wordNgrams(wordTokens(normalized)),
     wordVocabulary,
     wordIdf,
   );
   const charFeatures = weightedTfidf(
-    countTerms(charWbNgrams(normalized)),
+    charWbNgrams(normalized),
     charVocabulary,
     charIdf,
   );
-  const features = new Map<number, number>();
-  for (const [index, value] of wordFeatures) features.set(index, value);
-  const charOffset = wordVocabulary.size;
   for (const [index, value] of charFeatures) {
-    features.set(charOffset + index, value);
-  }
-  const ruleOffset = wordVocabulary.size + charVocabulary.size;
-  for (const name of ruleFeatures(normalized, question)) {
-    const index = ruleVocabulary.get(name);
-    if (index !== undefined) features.set(ruleOffset + index, 1);
+    features.set(wordVocabulary.size + index, value);
   }
 
-  const featureCount = wordVocabulary.size + charVocabulary.size +
-    ruleVocabulary.size;
-  const decision = new Float64Array(classes.length);
-  for (let classIndex = 0; classIndex < classes.length; classIndex += 1) {
+  const scores = classes.map((_, classIndex) => {
     let score = intercepts[classIndex];
-    const classOffset = classIndex * featureCount;
+    const offset = classIndex * featureCount;
     for (const [index, value] of features) {
-      score += coefficients[classOffset + index] * value;
+      score += coefficients[offset + index] * value;
     }
-    decision[classIndex] = score;
-  }
-
-  const classProbabilities = new Map<CanonicalIntent, number>();
-  let total = 0;
-  for (let classIndex = 0; classIndex < classes.length; classIndex += 1) {
-    const probability = expit(
-      -(calibratorA[classIndex] * decision[classIndex] +
-        calibratorB[classIndex]),
-    );
-    classProbabilities.set(classes[classIndex], probability);
-    total += probability;
-  }
+    return score;
+  });
+  const maximum = Math.max(...scores);
+  const exponentials = scores.map((score) => Math.exp(score - maximum));
+  const total = exponentials.reduce((sum, value) => sum + value, 0);
 
   const probabilities = {} as Record<CanonicalIntent, number>;
-  for (const intent of canonicalIntents) {
-    const probability = total > 0
-      ? (classProbabilities.get(intent) ?? 0) / total
-      : 1 / canonicalIntents.length;
-    probabilities[intent] = probability;
-  }
-  let intent = canonicalIntents[0];
+  let intent = classes[0];
   let confidence = -1;
-  for (const candidate of canonicalIntents) {
-    if (probabilities[candidate] > confidence) {
+  classes.forEach((candidate, classIndex) => {
+    const probability = exponentials[classIndex] / total;
+    probabilities[candidate] = probability;
+    if (probability > confidence) {
       intent = candidate;
-      confidence = probabilities[candidate];
+      confidence = probability;
     }
-  }
+  });
   return { intent, confidence, probabilities };
+}
+
+const LEADING_COURTESY =
+  /^(?:(?:hola|holi|ola|buenas|buenos dias|buenas tardes|buenas noches|buen dia|saludos|hey|ey|oye|oiga|porfa|por favor|disculpa|disculpe|amigo|parce|una pregunta|pregunta)\b[\s,.:;!¡]*)+/u;
+
+/**
+ * Quita el saludo o la cortesía del inicio ("hola, ...", "porfa ...") cuando
+ * después viene una pregunta; así un saludo no arrastra la intención.
+ */
+export function stripLeadingCourtesy(question: string): string {
+  const normalized = normalizeModelText(question).replace(/^[¿¡\s]+/u, "");
+  const rest = normalized.replace(LEADING_COURTESY, "").trim();
+  return /[\p{L}\p{N}]{2,}/u.test(rest) ? rest : normalized;
+}
+
+/** Intención final: veto de agroquímicos, clasificador y reglas de corrección. */
+export function classifyQuestion(question: string): CanonicalIntent {
+  if (isUnsafeAgroAdvice(question)) return "fuera_de_alcance";
+  const text = stripLeadingCourtesy(question);
+  return resolveAssistantIntent(text, predictModel(text).intent);
 }
 
 export function resolveAssistantIntent(

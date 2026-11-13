@@ -217,7 +217,7 @@ El ciclo de regresión de maíz en Lote Norte, de 2,5 ha, valida estas fórmulas
 
 El asistente no usa un modelo de lenguaje externo. Para cada pregunta:
 
-1. un clasificador local (regresión logística exportada a TypeScript en `model.ts` y `model_data.ts`) elige una de 13 intenciones;
+1. se quita el saludo inicial ("hola, ...", "porfa ...") si después viene una pregunta, y un clasificador local (TF-IDF de palabras y caracteres con regresión logística multinomial, entrenado con `scripts/asistente/entrenar.py` y exportado a `model.ts` y `model_data.ts`) elige una de 13 intenciones; los n-gramas de caracteres hacen que tolere errores de escritura;
 2. un resolver acotado corrige casos conocidos y un veto server-side rechaza pedidos de recomendaciones o dosis de agroquímicos;
 3. `fallback.ts` construye la respuesta con las cifras del resumen real del usuario y devuelve `source: "fallback"`.
 

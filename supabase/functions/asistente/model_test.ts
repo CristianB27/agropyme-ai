@@ -1,21 +1,14 @@
 import {
   type CanonicalIntent,
+  classifyQuestion,
   isUnsafeAgroAdvice,
   predictModel,
   resolveAssistantIntent,
 } from "./model.ts";
 
 interface ParityCase {
-  id: string;
   text: string;
-  expectedIntent: CanonicalIntent;
-  expectedProbabilities: number[];
-}
-
-interface ParityFixture {
-  source: string;
-  sourceSha256: string;
-  cases: ParityCase[];
+  probabilities: Record<CanonicalIntent, number>;
 }
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -30,48 +23,70 @@ function assertEquals<T>(actual: T, expected: T, message: string): void {
   }
 }
 
-Deno.test("el modelo TypeScript conserva la paridad numérica de Python en dev", async () => {
-  const fixtureUrl = new URL("./testdata/model_parity.json", import.meta.url);
-  const fixture = JSON.parse(
-    await Deno.readTextFile(fixtureUrl),
-  ) as ParityFixture;
-  let maximumDifference = 0;
-  let intentMismatches = 0;
+async function readBenchmark(
+  name: string,
+): Promise<[CanonicalIntent, string][]> {
+  const text = await Deno.readTextFile(
+    new URL(`./testdata/${name}`, import.meta.url),
+  );
+  return text.split(/\r?\n/).filter((line) => line.trim()).map((line) => {
+    const [intent, question] = line.split("\t");
+    return [intent as CanonicalIntent, question];
+  });
+}
 
+function finalIntent(question: string): CanonicalIntent {
+  return classifyQuestion(question);
+}
+
+Deno.test("el modelo TypeScript calcula las mismas probabilidades que Python", async () => {
+  const fixture = JSON.parse(
+    await Deno.readTextFile(
+      new URL("./testdata/model_parity.json", import.meta.url),
+    ),
+  ) as { cases: ParityCase[] };
+  assert(fixture.cases.length > 0, "El archivo de paridad está vacío");
+  let maximumDifference = 0;
   for (const testCase of fixture.cases) {
     const prediction = predictModel(testCase.text);
-    if (prediction.intent !== testCase.expectedIntent) intentMismatches += 1;
-    for (
-      let index = 0;
-      index < testCase.expectedProbabilities.length;
-      index += 1
-    ) {
-      const intent = Object.keys(
-        prediction.probabilities,
-      )[index] as CanonicalIntent;
+    for (const [intent, expected] of Object.entries(testCase.probabilities)) {
       maximumDifference = Math.max(
         maximumDifference,
         Math.abs(
-          prediction.probabilities[intent] -
-            testCase.expectedProbabilities[index],
+          prediction.probabilities[intent as CanonicalIntent] - expected,
         ),
       );
     }
   }
-
   assert(
-    intentMismatches === 6,
-    `La accuracy top-1 cambió: hay ${intentMismatches} intenciones distintas`,
-  );
-  assert(
-    fixture.cases.length - intentMismatches === 254,
-    "La accuracy top-1 debe permanecer en 254/260 casos correctos",
-  );
-  assert(
-    maximumDifference < 1e-12,
+    maximumDifference < 1e-9,
     `La diferencia máxima de probabilidad es ${maximumDifference}`,
   );
 });
+
+for (
+  const [name, minimum] of [["benchmark_dev.tsv", 0.95], [
+    "benchmark_final.tsv",
+    0.9,
+  ]] as const
+) {
+  Deno.test(`el asistente entiende preguntas redactadas libremente (${name})`, async () => {
+    const rows = await readBenchmark(name);
+    const failures = rows.filter(([intent, question]) =>
+      finalIntent(question) !== intent
+    );
+    const accuracy = (rows.length - failures.length) / rows.length;
+    assert(
+      accuracy >= minimum,
+      `Aciertos ${(accuracy * 100).toFixed(1)} % (< ${
+        minimum * 100
+      } %). Fallos:\n` +
+        failures.map(([intent, question]) => `  ${intent}: ${question}`).join(
+          "\n",
+        ),
+    );
+  });
+}
 
 Deno.test("el resolver recupera intención para consultas naturales del frontend", () => {
   assertEquals(

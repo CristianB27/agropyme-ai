@@ -1,8 +1,7 @@
 import {
   type CanonicalIntent,
+  classifyQuestion,
   isUnsafeAgroAdvice,
-  predictModel,
-  resolveAssistantIntent,
 } from "./model.ts";
 import type { CycleSummary, DataSummary } from "./types.ts";
 
@@ -210,12 +209,18 @@ function answerUnitCost(cycle: CycleSummary | undefined): string {
 function describeNonSales(cycle: CycleSummary): string {
   const parts: string[] = [];
   if (cycle.QusoPropio > 0) {
-    parts.push(`${decimalFormatter.format(cycle.QusoPropio)} kg para uso propio (hogar, animales, semilla o regalo)`);
+    parts.push(
+      `${
+        decimalFormatter.format(cycle.QusoPropio)
+      } kg para uso propio (hogar, animales, semilla o regalo)`,
+    );
   }
   if (cycle.Qperdida > 0) {
     parts.push(`${decimalFormatter.format(cycle.Qperdida)} kg perdidos`);
   }
-  return parts.length > 0 ? ` Además salieron sin venderse ${parts.join(" y ")}.` : "";
+  return parts.length > 0
+    ? ` Además salieron sin venderse ${parts.join(" y ")}.`
+    : "";
 }
 
 function answerSales(cycle: CycleSummary | undefined): string {
@@ -226,14 +231,20 @@ function answerSales(cycle: CycleSummary | undefined): string {
     ? ` Quedan ${decimalFormatter.format(cycle.Qnv)} kg sin vender.`
     : "";
   const average = cycle.precioPromedioVenta !== null
-    ? ` El precio promedio fue ${currencyFormatter.format(cycle.precioPromedioVenta)} por kg.`
+    ? ` El precio promedio fue ${
+      currencyFormatter.format(cycle.precioPromedioVenta)
+    } por kg.`
     : "";
   const pending = cycle.ingresosPorCobrar > 0
-    ? ` De ese valor, ${currencyFormatter.format(cycle.ingresosPorCobrar)} están por cobrar.`
+    ? ` De ese valor, ${
+      currencyFormatter.format(cycle.ingresosPorCobrar)
+    } están por cobrar.`
     : "";
   return `En el ciclo de ${cycle.cultivo} en ${cycle.lote} (${cycle.finca}) los ingresos realizados por ventas son ${
     currencyFormatter.format(cycle.ingresosRealizados)
-  } y se vendieron ${decimalFormatter.format(cycle.Qv)} kg.${average}${pending}${partial}`;
+  } y se vendieron ${
+    decimalFormatter.format(cycle.Qv)
+  } kg.${average}${pending}${partial}`;
 }
 
 function answerProduction(cycle: CycleSummary | undefined): string {
@@ -320,8 +331,7 @@ export function deterministicAnswer(
   detectedIntent?: CanonicalIntent,
 ): string {
   const cycle = selectCycle(summary, question);
-  const intent = detectedIntent ??
-    resolveAssistantIntent(question, predictModel(question).intent);
+  const intent = detectedIntent ?? classifyQuestion(question);
 
   if (isUnsafeAgroAdvice(question)) return answerOutsideScope();
 
