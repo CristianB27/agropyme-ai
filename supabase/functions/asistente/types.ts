@@ -6,7 +6,7 @@ export interface AssistantRequest {
 
 export interface AssistantResponse {
   answer: string;
-  source: "anthropic" | "fallback";
+  source: "fallback";
   notice?: string;
 }
 

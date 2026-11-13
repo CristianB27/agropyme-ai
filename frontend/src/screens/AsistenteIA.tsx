@@ -121,7 +121,7 @@ export default function AsistenteIA() {
                 <p className="whitespace-pre-wrap">{msg.text}</p>
                 {msg.role === 'assistant' && msg.source && msg.source !== 'error' && (
                   <p className="mt-1 text-[10px] text-gray-500">
-                    {msg.source === 'anthropic' ? 'Respuesta generada con IA' : 'Respuesta calculada con tus datos reales'}
+                    Respuesta calculada con tus datos reales
                   </p>
                 )}
                 {msg.notice && (

@@ -8,7 +8,7 @@ export interface AsistenteHistoryMessage {
 
 export interface AsistenteResult {
   answer: string;
-  source: 'anthropic' | 'fallback';
+  source: 'fallback';
   notice?: string;
 }
 

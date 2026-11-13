@@ -221,7 +221,7 @@ El asistente no usa un modelo de lenguaje externo. Para cada pregunta:
 2. un resolver acotado corrige casos conocidos y un veto server-side rechaza pedidos de recomendaciones o dosis de agroquímicos;
 3. `fallback.ts` construye la respuesta con las cifras del resumen real del usuario y devuelve `source: "fallback"`.
 
-`anthropic.ts` es código heredado: sin `ANTHROPIC_API_KEY` no hace ninguna llamada externa y, por decisión del proyecto, esa clave **no** se configura.
+La función no llama a ningún servicio externo de IA.
 
 ### Pruebas y despliegue
 

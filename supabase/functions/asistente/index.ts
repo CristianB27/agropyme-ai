@@ -1,4 +1,3 @@
-import { askAnthropic } from "./anthropic.ts";
 import { AuthenticationError, loadUserData } from "./data.ts";
 import { deterministicAnswer } from "./fallback.ts";
 import { classifyQuestion } from "./model.ts";
@@ -120,43 +119,12 @@ Deno.serve(async (request: Request) => {
     const userData = await loadUserData(accessToken);
     const summary = buildDataSummary(userData, parsed.clima);
 
+    // El clasificador local elige la intención y la respuesta se calcula con
+    // los datos reales del usuario; no se llama a ningún servicio externo.
     const effectiveIntent = classifyQuestion(parsed.question);
-
-    if (effectiveIntent === "fuera_de_alcance") {
-      const response: AssistantResponse = {
-        answer: deterministicAnswer(
-          parsed.question,
-          summary,
-          effectiveIntent,
-        ),
-        source: "fallback",
-      };
-      return jsonResponse(response);
-    }
-
-    const anthropicAnswer = await askAnthropic(
-      parsed,
-      summary,
-      effectiveIntent,
-    );
-
-    if (anthropicAnswer) {
-      const response: AssistantResponse = {
-        answer: anthropicAnswer,
-        source: "anthropic",
-      };
-      return jsonResponse(response);
-    }
-
     const response: AssistantResponse = {
-      answer: deterministicAnswer(
-        parsed.question,
-        summary,
-        effectiveIntent,
-      ),
+      answer: deterministicAnswer(parsed.question, summary, effectiveIntent),
       source: "fallback",
-      notice:
-        "La IA generativa no está configurada o no está disponible; la respuesta se calculó con tus datos reales.",
     };
     return jsonResponse(response);
   } catch (caughtError) {
