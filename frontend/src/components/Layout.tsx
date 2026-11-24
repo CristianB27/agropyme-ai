@@ -1,5 +1,8 @@
 import { LayoutDashboard, Map, Receipt, MessageCircle, Leaf, LogOut, Wheat } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { registrarToque } from '../utils/easterEgg';
+import CosechaDorada from './CosechaDorada';
 
 export type ScreenId = 'dashboard' | 'lotes' | 'costos' | 'produccion' | 'asistente';
 
@@ -32,14 +35,28 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
     window.location.replace('/login');
   };
 
+  // Easter egg: cinco toques rápidos sobre el logo abren la "Cosecha dorada".
+  const toques = useRef<number[]>([]);
+  const [sorpresa, setSorpresa] = useState(false);
+  const tocarLogo = () => {
+    const resultado = registrarToque(toques.current, Date.now());
+    toques.current = resultado.toques;
+    if (resultado.activar) setSorpresa(true);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar - desktop */}
       <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-gray-200 flex-col z-30">
         <div className="flex items-center gap-2.5 px-6 py-5 border-b border-gray-100">
-          <div className="w-9 h-9 rounded-lg bg-[#2E7D32] flex items-center justify-center">
+          <button
+            type="button"
+            onClick={tocarLogo}
+            aria-label="AgroPyme AI"
+            className="w-9 h-9 rounded-lg bg-[#2E7D32] flex items-center justify-center select-none active:scale-90 transition-transform"
+          >
             <Leaf className="w-5 h-5 text-white" />
-          </div>
+          </button>
           <div>
             <h1 className="text-base font-bold text-gray-900 leading-tight">AgroPyme AI</h1>
             <p className="text-[10px] text-gray-500 leading-tight">Gestión agrícola</p>
@@ -91,9 +108,14 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
       <header className="md:hidden sticky top-0 bg-white border-b border-gray-200 z-30">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#2E7D32] flex items-center justify-center">
+            <button
+              type="button"
+              onClick={tocarLogo}
+              aria-label="AgroPyme AI"
+              className="w-8 h-8 rounded-lg bg-[#2E7D32] flex items-center justify-center select-none active:scale-90 transition-transform"
+            >
               <Leaf className="w-4 h-4 text-white" />
-            </div>
+            </button>
             <h1 className="text-sm font-bold text-gray-900">AgroPyme AI</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -141,6 +163,8 @@ export default function Layout({ current, onNavigate, children }: LayoutProps) {
           );
         })}
       </nav>
+
+      {sorpresa && <CosechaDorada onClose={() => setSorpresa(false)} />}
     </div>
   );
 }
