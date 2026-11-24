@@ -1,3 +1,6 @@
+import type { AppData } from '../types';
+import { calcularCiclo } from './calculos';
+
 /** Toques necesarios sobre el logo para abrir la sorpresa. */
 export const TOQUES_EASTER_EGG = 5;
 /** Tiempo máximo (ms) entre el primer y el último toque. */
@@ -16,4 +19,23 @@ export function registrarToque(
   const recientes = [...toques, ahora].filter((t) => ahora - t <= ventanaMs);
   if (recientes.length >= necesarios) return { toques: [], activar: true };
   return { toques: recientes, activar: false };
+}
+
+/**
+ * Resume todos los ciclos del productor para el easter egg: kilos cosechados
+ * y margen realizado acumulado. Un ciclo con datos inválidos se omite.
+ */
+export function resumirCosechas(data: AppData): { kgCosechados: number; margen: number; enGanancias: boolean } {
+  let kgCosechados = 0;
+  let margen = 0;
+  for (const ciclo of data.ciclos_productivos) {
+    try {
+      const calc = calcularCiclo(data, ciclo);
+      kgCosechados += calc.Q;
+      margen += calc.margenRealizado ?? 0;
+    } catch {
+      // Ciclo incompleto: no suma.
+    }
+  }
+  return { kgCosechados, margen, enGanancias: margen > 0 };
 }

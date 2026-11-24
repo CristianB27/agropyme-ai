@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { loadAppData } from '../services/agropyme';
+import { resumirCosechas } from '../utils/easterEgg';
+import { formatCOP } from '../utils/format';
 
 /**
  * Easter egg "Cosecha dorada": se abre al tocar cinco veces seguidas el logo.
@@ -11,8 +14,13 @@ interface Props {
   onClose: () => void;
 }
 
-const TITULO = '¡Cosecha dorada!';
-const KILOS_FINALES = 24000;
+const TITULO = 'FELICIDADES';
+
+interface Resumen {
+  kgCosechados: number;
+  margen: number;
+  enGanancias: boolean;
+}
 
 // Generador pseudoaleatorio con semilla para que la escena sea estable entre renders.
 function aleatorio(semilla: number) {
@@ -75,21 +83,34 @@ function Tractor() {
 
 export default function CosechaDorada({ onClose }: Props) {
   const [kilos, setKilos] = useState(0);
+  const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [abiertoEn] = useState(() => performance.now());
+
+  // Datos reales del productor: kilos cosechados y si va en ganancias.
+  useEffect(() => {
+    let vigente = true;
+    loadAppData()
+      .then((data) => { if (vigente) setResumen(resumirCosechas(data)); })
+      .catch(() => { /* Sin datos la escena se muestra igual, sin cifras. */ });
+    return () => { vigente = false; };
+  }, []);
 
   // Contador de kilos que arranca cuando la escena ya está armada.
+  const kilosFinales = resumen?.kgCosechados ?? 0;
   useEffect(() => {
+    if (kilosFinales <= 0) return undefined;
     let cuadro = 0;
-    const inicio = performance.now() + 2600;
+    const inicio = Math.max(abiertoEn + 2600, performance.now());
     const duracion = 2200;
     const paso = (t: number) => {
       const avance = Math.min(Math.max((t - inicio) / duracion, 0), 1);
       const suave = 1 - (1 - avance) ** 3;
-      setKilos(Math.round(KILOS_FINALES * suave));
+      setKilos(Math.round(kilosFinales * suave));
       if (avance < 1) cuadro = requestAnimationFrame(paso);
     };
     cuadro = requestAnimationFrame(paso);
     return () => cancelAnimationFrame(cuadro);
-  }, []);
+  }, [kilosFinales, abiertoEn]);
 
   // Escape cierra la escena.
   useEffect(() => {
@@ -124,7 +145,7 @@ export default function CosechaDorada({ onClose }: Props) {
   }, []);
 
   return (
-    <div className="cd" role="dialog" aria-modal="true" aria-label="Cosecha dorada">
+    <div className="cd" role="dialog" aria-modal="true" aria-label="Felicidades">
       <style>{ESTILOS}</style>
 
       <div className="cd-cielo-dia" />
@@ -188,9 +209,24 @@ export default function CosechaDorada({ onClose }: Props) {
             <span key={i} style={{ animationDelay: `${2.4 + i * 0.06}s` }}>{letra === ' ' ? ' ' : letra}</span>
           ))}
         </h2>
-        <p className="cd-kilos">{kilos.toLocaleString('es-CO')} <small>kg cosechados</small></p>
-        <p className="cd-texto">Rentabilidad: 100 % de pura alegría 🌽</p>
-        <p className="cd-creditos">Hecho con cariño por Cristian Benitez y Santiago Payares · UTB 2026</p>
+        {kilosFinales > 0 && (
+          <p className="cd-kilos">{kilos.toLocaleString('es-CO')} <small>kg cosechados</small></p>
+        )}
+        <p className="cd-texto">
+          ¡Gracias por usar AgroPyme AI! Cada registro que haces nos ayuda a que tu finca crezca con números claros.
+        </p>
+        {resumen?.enGanancias && (
+          <div className="cd-ganancias">
+            <span className="cd-ganancias-icono" aria-hidden="true">🏆</span>
+            <p>
+              <strong>¡Vas en ganancias!</strong> Llevas {formatCOP(resumen.margen)} de margen.
+              Tu esfuerzo en el campo está dando frutos: sigue así.
+            </p>
+          </div>
+        )}
+        <p className="cd-creditos">
+          Con cariño,<br /><strong>Cristian Benitez y Santiago Payares</strong><br />UTB 2026
+        </p>
         <button type="button" className="cd-boton" onClick={onClose} autoFocus>Volver a la finca</button>
       </div>
     </div>
@@ -258,8 +294,16 @@ const ESTILOS = `
 .cd-titulo span { display: inline-block; animation: cd-letra .7s cubic-bezier(.3,1.8,.5,1) both; }
 .cd-kilos { margin: 8px 0 2px; font-size: clamp(26px, 6vw, 36px); font-weight: 800; color: #F57F17; font-variant-numeric: tabular-nums; }
 .cd-kilos small { font-size: 15px; font-weight: 600; color: #6D4C41; }
-.cd-texto { margin: 4px 0 10px; font-size: 16px; font-weight: 600; }
-.cd-creditos { margin: 0 0 16px; font-size: 12px; color: #546E7A; }
+.cd-texto { margin: 6px 0 12px; font-size: 15px; font-weight: 600; line-height: 1.45; }
+.cd-ganancias { display: flex; gap: 10px; align-items: center; margin: 0 0 14px; padding: 10px 14px; text-align: left;
+  border-radius: 14px; font-size: 14px; line-height: 1.4; color: #5D4037;
+  background: linear-gradient(135deg, #FFF8E1, #FFECB3); border: 1px solid #FFD54F;
+  animation: cd-brillo-entrada .8s cubic-bezier(.2,1.5,.4,1) 3.2s both, cd-brillo 2.4s ease-in-out 4s infinite; }
+.cd-ganancias p { margin: 0; }
+.cd-ganancias strong { color: #E65100; }
+.cd-ganancias-icono { font-size: 28px; animation: cd-latir 1.4s ease-in-out 4s infinite; }
+.cd-creditos { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: #546E7A; }
+.cd-creditos strong { color: #2E7D32; }
 .cd-boton { border: 0; border-radius: 999px; padding: 11px 26px; font-size: 15px; font-weight: 700; color: #fff; cursor: pointer;
   background: #2E7D32; box-shadow: 0 6px 18px rgba(46,125,50,.4); animation: cd-latir 1.6s ease-in-out 5s infinite; }
 .cd-boton:hover { background: #256628; }
@@ -287,6 +331,8 @@ const ESTILOS = `
   100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(540deg); } }
 @keyframes cd-tarjeta { from { opacity: 0; transform: translate(-50%, -30%) scale(.7); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes cd-letra { from { opacity: 0; transform: translateY(30px) scale(.4) rotate(-15deg); } to { opacity: 1; transform: none; } }
+@keyframes cd-brillo-entrada { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+@keyframes cd-brillo { 0%, 100% { box-shadow: 0 0 0 rgba(255,193,7,0); } 50% { box-shadow: 0 0 22px rgba(255,193,7,.75); } }
 @keyframes cd-latir { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 
 @media (prefers-reduced-motion: reduce) {
